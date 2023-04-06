@@ -45,7 +45,7 @@ fn main() {
             .iter()
             .zip(y_data.iter())
             .map(|(y1, y2)|
-                (y1[0].clone() - y2.clone()).powi(2)
+                (&y1[0] - y2).powi(2)
             )
             .sum::<Value>() / Value::from(y_data.len() as f64);
         
@@ -101,7 +101,7 @@ fn main() {
         .iter()
         .zip(y_testing_data.into_iter())
         .map(|(y_predicted, y_expected)|
-            (y_expected - y_predicted[0].clone()).powi(2)
+            (&y_expected - &y_predicted[0]).powi(2)
         )
         .sum::<Value>() / Value::from(x_testing_data.len() as f64);
 

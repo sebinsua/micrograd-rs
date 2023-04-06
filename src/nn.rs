@@ -33,9 +33,9 @@ impl Neuron {
     }
 
     pub fn forward(&self, x: &[Value]) -> Value {
-        let act = self.weights.iter().zip(x.iter())
-            .map(|(wi, xi)| wi.clone() * xi.clone())
-            .sum::<Value>() + self.bias.clone();
+        let act = &self.weights.iter().zip(x.iter())
+            .map(|(wi, xi)| wi * xi)
+            .sum::<Value>() + &self.bias;
             
         if self.nonlinear { act.relu() } else { act }
     }

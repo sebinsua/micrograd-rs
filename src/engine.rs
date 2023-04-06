@@ -163,29 +163,29 @@ impl Value {
         }
     }
 
-    pub fn pow(self, other: Value) -> Value {
+    pub fn pow(&self, other: &Value) -> Value {
         power(self, other)
     }
 
-    pub fn powi(self, otheri: i32) -> Value {
+    pub fn powi(&self, otheri: i32) -> Value {
         power(
             self, 
-            Value::from(
+            &Value::from(
                 otheri as f64,
             )
         )
     }
 
-    pub fn powf(self, otherf: f64) -> Value {
+    pub fn powf(&self, otherf: f64) -> Value {
         power(
             self, 
-            Value::from(
+            &Value::from(
                 otherf,
             )
         )
     }
 
-    pub fn relu(self) -> Value {
+    pub fn relu(&self) -> Value {
         let a = self.data();
         let c = if a > 0.0 { a } else { 0.0 };
 
@@ -203,7 +203,7 @@ impl Value {
     }
 }
 
-fn power(s: Value, other: Value) -> Value {
+fn power(s: &Value, other: &Value) -> Value {
     let a = s.data();
     let b = other.data();
     let c = a.powf(b);
@@ -239,6 +239,30 @@ impl Add<Value> for Value {
     type Output = Value;
 
     fn add(self, other: Value) -> Self::Output {
+        add(&self, &other, Operation::Add)
+    }
+}
+
+impl<'b> Add<&'b Value> for Value {
+    type Output = Value;
+
+    fn add(self, other: &'b Value) -> Self::Output {
+        add(&self, other, Operation::Add)
+    }
+}
+
+impl<'a> Add<Value> for &'a Value {
+    type Output = Value;
+
+    fn add(self, other: Value) -> Self::Output {
+        add(self, &other, Operation::Add)
+    }
+}
+
+impl<'a, 'b> Add<&'b Value> for &'a Value {
+    type Output = Value;
+
+    fn add(self, other: &'b Value) -> Self::Output {
         add(self, other, Operation::Add)
     }
 }
@@ -248,7 +272,19 @@ impl Add<Value> for f64 {
 
     fn add(self, other: Value) -> Self::Output {
         add(
-            Value::from(self),
+            &Value::from(self),
+            &other,
+            Operation::Add
+        )
+    }
+}
+
+impl Add<&Value> for f64 {
+    type Output = Value;
+
+    fn add(self, other: &Value) -> Self::Output {
+        add(
+            &Value::from(self),
             other,
             Operation::Add
         )
@@ -260,8 +296,8 @@ impl Add<f64> for Value {
 
     fn add(self, b: f64) -> Self::Output {
         add(
-            self,
-            Value::from(
+            &self,
+            &Value::from(
                 b,
             ),
             Operation::Add
@@ -269,7 +305,21 @@ impl Add<f64> for Value {
     }
 }
 
-fn add(s: Value, other: Value, operation: Operation) -> Value {
+impl Add<f64> for &Value {
+    type Output = Value;
+
+    fn add(self, b: f64) -> Self::Output {
+        add(
+            self,
+            &Value::from(
+                b,
+            ),
+            Operation::Add
+        )
+    }
+}
+
+fn add(s: &Value, other: &Value, operation: Operation) -> Value {
     let a = s.data();
     let b = other.data();
     let c = a + b;
@@ -294,6 +344,30 @@ impl Sub<Value> for Value {
     type Output = Value;
 
     fn sub(self, other: Value) -> Self::Output {
+        subtract(&self, &other)
+    }
+}
+
+impl<'b> Sub<&'b Value> for Value {
+    type Output = Value;
+
+    fn sub(self, other: &'b Value) -> Self::Output {
+        subtract(&self, other)
+    }
+}
+
+impl<'a> Sub<Value> for &'a Value {
+    type Output = Value;
+
+    fn sub(self, other: Value) -> Self::Output {
+        subtract(self, &other)
+    }
+}
+
+impl<'a, 'b> Sub<&'b Value> for &'a Value {
+    type Output = Value;
+
+    fn sub(self, other: &'b Value) -> Self::Output {
         subtract(self, other)
     }
 }
@@ -303,7 +377,18 @@ impl Sub<Value> for f64 {
 
     fn sub(self, other: Value) -> Self::Output {
         subtract(
-            Value::from(self),
+            &Value::from(self),
+            &other
+        )
+    }
+}
+
+impl Sub<&Value> for f64 {
+    type Output = Value;
+
+    fn sub(self, other: &Value) -> Self::Output {
+        subtract(
+            &Value::from(self),
             other
         )
     }
@@ -314,22 +399,59 @@ impl Sub<f64> for Value {
 
     fn sub(self, b: f64) -> Self::Output {
         subtract(
-            self,
-            Value::from(
+            &self,
+            &Value::from(
                 b,
             )
         )
     }
 }
 
-fn subtract(s: Value, other: Value) -> Value {
-    add(s, negate(other), Operation::Subtract)
+impl Sub<f64> for &Value {
+    type Output = Value;
+
+    fn sub(self, b: f64) -> Self::Output {
+        subtract(
+            self,
+            &Value::from(
+                b,
+            )
+        )
+    }
+}
+
+fn subtract(s: &Value, other: &Value) -> Value {
+    add(s, &negate(other), Operation::Subtract)
 }
 
 impl Mul<Value> for Value {
     type Output = Value;
 
     fn mul(self, other: Value) -> Self::Output {
+        multiply(&self, &other, Operation::Multiply)
+    }
+}
+
+impl<'b> Mul<&'b Value> for Value {
+    type Output = Value;
+
+    fn mul(self, other: &'b Value) -> Self::Output {
+        multiply(&self, other, Operation::Multiply)
+    }
+}
+
+impl<'a> Mul<Value> for &'a Value {
+    type Output = Value;
+
+    fn mul(self, other: Value) -> Self::Output {
+        multiply(self, &other, Operation::Multiply)
+    }
+}
+
+impl<'a, 'b> Mul<&'b Value> for &'a Value {
+    type Output = Value;
+
+    fn mul(self, other: &'b Value) -> Self::Output {
         multiply(self, other, Operation::Multiply)
     }
 }
@@ -338,7 +460,15 @@ impl Mul<Value> for f64 {
     type Output = Value;
 
     fn mul(self, other: Value) -> Self::Output {
-        multiply(Value::from(self), other, Operation::Multiply)
+        multiply(&Value::from(self), &other, Operation::Multiply)
+    }
+}
+
+impl Mul<&Value> for f64 {
+    type Output = Value;
+
+    fn mul(self, other: &Value) -> Self::Output {
+        multiply(&Value::from(self), other, Operation::Multiply)
     }
 }
 
@@ -347,8 +477,8 @@ impl Mul<f64> for Value {
 
     fn mul(self, b: f64) -> Self::Output {
         multiply(
-            self,
-            Value::from(
+            &self,
+            &Value::from(
                 b,
             ),
             Operation::Multiply
@@ -356,7 +486,21 @@ impl Mul<f64> for Value {
     }
 }
 
-fn multiply(s: Value, other: Value, operation: Operation) -> Value {
+impl Mul<f64> for &Value {
+    type Output = Value;
+
+    fn mul(self, b: f64) -> Self::Output {
+        multiply(
+            self,
+            &Value::from(
+                b,
+            ),
+            Operation::Multiply
+        )
+    }
+}
+
+fn multiply(s: &Value, other: &Value, operation: Operation) -> Value {
     let a = s.data();
     let b = other.data();
     let c = a * b;
@@ -381,6 +525,30 @@ impl Div<Value> for Value {
     type Output = Value;
 
     fn div(self, other: Value) -> Self::Output {
+        divide(&self, &other)
+    }
+}
+
+impl<'b> Div<&'b Value> for Value {
+    type Output = Value;
+
+    fn div(self, other: &'b Value) -> Self::Output {
+        divide(&self, other)
+    }
+}
+
+impl<'a> Div<Value> for &'a Value {
+    type Output = Value;
+
+    fn div(self, other: Value) -> Self::Output {
+        divide(self, &other)
+    }
+}
+
+impl<'a, 'b> Div<&'b Value> for &'a Value {
+    type Output = Value;
+
+    fn div(self, other: &'b Value) -> Self::Output {
         divide(self, other)
     }
 }
@@ -389,7 +557,15 @@ impl Div<Value> for f64 {
     type Output = Value;
 
     fn div(self, other: Value) -> Self::Output {
-        divide(Value::from(self), other)
+        divide(&Value::from(self), &other)
+    }
+}
+
+impl Div<&Value> for f64 {
+    type Output = Value;
+
+    fn div(self, other: &Value) -> Self::Output {
+        divide(&Value::from(self), other)
     }
 }
 
@@ -398,19 +574,40 @@ impl Div<f64> for Value {
 
     fn div(self, b: f64) -> Self::Output {
         divide(
-            self,
-            Value::from(
+            &self,
+            &Value::from(
                 b,
             )
         )
     }
 }
 
-fn divide(s: Value, other: Value) -> Value {
-    multiply(s, other.powf(-1.0), Operation::Divide)
+impl Div<f64> for &Value {
+    type Output = Value;
+
+    fn div(self, b: f64) -> Self::Output {
+        divide(
+            self,
+            &Value::from(
+                b,
+            )
+        )
+    }
+}
+
+fn divide(s: &Value, other: &Value) -> Value {
+    multiply(s, &other.powf(-1.0), Operation::Divide)
 }
 
 impl Neg for Value {
+    type Output = Value;
+
+    fn neg(self) -> Self::Output {
+        negate(&self)
+    }
+}
+
+impl<'a> Neg for &'a Value {
     type Output = Value;
 
     fn neg(self) -> Self::Output {
@@ -418,10 +615,10 @@ impl Neg for Value {
     }
 }
 
-fn negate(s: Value) -> Value {
+fn negate(s: &Value) -> Value {
     multiply(
         s,
-        Value::from(
+        &Value::from(
             -1.0,
         ),
         Operation::Negate
@@ -476,6 +673,23 @@ mod tests {
     }
 
     #[test]
+    fn test_backward_for_add() {
+        let a = Value::from(
+            1.0,
+        );
+        let b = Value::from(
+            2.0,
+        );
+        
+        let mut c = &a + &b;
+        c.backward();
+
+        assert_eq!(c.gradient(), 1.0);
+        assert_eq!(a.gradient(), 1.0);
+        assert_eq!(b.gradient(), 1.0);
+    }
+
+    #[test]
     fn test_value_sub_value() {
         let a = Value::from(
             15.0,
@@ -497,6 +711,23 @@ mod tests {
         
         let c = a - b;
         assert_eq!(c.data(), 6.0);
+    }
+
+    #[test]
+    fn test_backward_for_sub() {
+        let a = Value::from(
+            15.0,
+        );
+        let b = Value::from(
+            12.0,
+        );
+        
+        let mut c = &a - &b;
+        c.backward();
+
+        assert_eq!(c.gradient(), 1.0);
+        assert_eq!(a.gradient(), 1.0);
+        assert_eq!(b.gradient(), -1.0);
     }
 
     #[test]
@@ -524,6 +755,23 @@ mod tests {
     }
 
     #[test]
+    fn test_backward_for_multiply() {
+        let a = Value::from(
+            33.0,
+        );
+        let b = Value::from(
+            3.0,
+        );
+        
+        let mut c = &a * &b;
+        c.backward();
+
+        assert_eq!(c.gradient(), 1.0);
+        assert_eq!(a.gradient(), 3.0);
+        assert_eq!(b.gradient(), 33.0);
+    }
+
+    #[test]
     fn test_value_divide_value() {
         let a = Value::from(
             50.0,
@@ -548,6 +796,23 @@ mod tests {
     }
 
     #[test]
+    fn test_backward_for_divide() {
+        let a = Value::from(
+            50.0,
+        );
+        let b = Value::from(
+            2.0,
+        );
+        
+        let mut c = &a / &b;
+        c.backward();
+
+        assert_eq!(c.gradient(), 1.0);
+        assert_eq!(a.gradient(), 0.5);
+        assert_eq!(b.gradient(), -12.5);
+    }
+
+    #[test]
     fn test_value_pow_value() {
         let a = Value::from(
             2.0,
@@ -556,7 +821,7 @@ mod tests {
             2.0,
         );
         
-        let c = a.pow(b);
+        let c = a.pow(&b);
         assert_eq!(c.data(), 4.0);
     }
 
@@ -572,6 +837,23 @@ mod tests {
     }
 
     #[test]
+    fn test_backward_for_pow() {
+        let a = Value::from(
+            2.0,
+        );
+        let b = Value::from(
+            2.0,
+        );
+        
+        let mut c = a.pow(&b);
+        c.backward();
+
+        assert_eq!(c.gradient(), 1.0);
+        assert_eq!(a.gradient(), 4.0);
+        assert_eq!(b.gradient(), 0.0);
+    }
+
+    #[test]
     fn test_value_negate() {
         let a = Value::from(
             3.0,
@@ -580,6 +862,19 @@ mod tests {
         let c = -a;
 
         assert_eq!(c.data(), -3.0);
+    }
+
+    #[test]
+    fn test_backward_for_negate() {
+        let a = Value::from(
+            3.0,
+        );
+        
+        let mut c = -(&a);
+        c.backward();
+
+        assert_eq!(c.gradient(), 1.0);
+        assert_eq!(a.gradient(), -1.0);
     }
 
     #[test]
@@ -595,15 +890,33 @@ mod tests {
     }
 
     #[test]
+    fn test_backward_for_relu() {
+        let a = Value::from(-3.0);
+        let b = Value::from(4.0);
+        
+        let mut relu_a = a.relu();
+        let mut relu_b = b.relu();
+
+        relu_a.backward();
+        relu_b.backward();
+
+        assert_eq!(relu_a.gradient(), 1.0);
+        assert_eq!(a.gradient(), 0.0);
+        assert_eq!(relu_b.gradient(), 1.0);
+        assert_eq!(b.gradient(), 1.0);
+    }
+
+    #[test]
     fn test_gradient_descent() {
         let a = Value::from(1.0);
         let b = Value::from(2.0);
         let c = Value::from(3.0);
 
-        let mut y = a.clone() * b.clone() + c.clone();
+        let mut y = &(&a * &b) + &c;
 
         y.backward();
 
+        assert_eq!(y.gradient(), 1.0);
         assert_eq!(a.gradient(), 2.0);
         assert_eq!(b.gradient(), 1.0);
         assert_eq!(c.gradient(), 1.0);
@@ -613,16 +926,16 @@ mod tests {
     fn test_gradient_descent_from_readme() {
         let a = Value::from(-4.0);
         let b = Value::from(2.0);
-        let mut c = a.clone() + b.clone();
-        let mut d = a.clone() * b.clone() + b.clone().powf(3.0);
-        c = c.clone() + (c.clone() + 1.0);
-        c = c.clone() + (1.0 + c.clone() + (-a.clone()));
-        d = d.clone() + (d.clone() * 2.0 + (b.clone() + a.clone()).relu());
-        d = d.clone() + (3.0 * d.clone() + (b.clone() - a.clone()).relu());
-        let e = c.clone() - d.clone();
+        let mut c = &a + &b;
+        let mut d = &a * &b + &b.powf(3.0);
+        c = &c + (&c + 1.0);
+        c = &c + (1.0 + &c + -&a);
+        d = &d + (&d * 2.0 + (&b + &a).relu());
+        d = &d + (3.0 * &d + (&b - &a).relu());
+        let e = &c - &d;
         let f = e.powf(2.0);
-        let mut g = f.clone() / 2.0;
-        g = g + (10.0 / f.clone());
+        let mut g = &f / 2.0;
+        g = &g + (10.0 / &f);
 
         assert_eq!(g.data(), 24.70408163265306); // i.e. 24.7041: the outcome of this forward pass
         g.backward();
