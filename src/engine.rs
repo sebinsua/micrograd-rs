@@ -61,6 +61,25 @@ impl Default for InternalValueData {
 #[derive(Clone)]
 pub struct Value(pub Rc<RefCell<InternalValueData>>);
 
+impl Deref for Value {
+    type Target = Rc<RefCell<InternalValueData>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T: Into<f64>> From<T> for Value {
+    fn from(t: T) -> Value {
+        Value::new(
+            InternalValueData {
+                data: t.into(),
+                ..Default::default()
+            }
+        )
+    }
+}
+
 impl Value {
     pub fn from<T>(t: T) -> Value
     where T: Into<Value> {
@@ -182,95 +201,6 @@ impl Value {
     }
 }
 
-impl Deref for Value {
-    type Target = Rc<RefCell<InternalValueData>>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T: Into<f64>> From<T> for Value {
-    fn from(t: T) -> Value {
-        Value::new(
-            InternalValueData {
-                data: t.into(),
-                ..Default::default()
-            }
-        )
-    }
-}
-
-impl Sum for Value {
-    fn sum<I: Iterator<Item=Self>>(mut iter: I) -> Self {
-        let initial = match iter.next() {
-            Some(x) => x,
-            None => panic!("Cannot sum an empty iterator"),
-        };
-        let tail = iter;
-
-        tail.fold(initial, |acc, x| acc + x)
-    }
-}
-
-fn add(s: Value, other: Value, operation: Operation) -> Value {
-    let a = s.data();
-    let b = other.data();
-    let c = a + b;
-
-    let out = Value::new(
-        InternalValueData::new(
-            c,
-            operation,
-            vec![s.clone(), other.clone()],
-            Rc::new(move || {})
-        )
-    );
-
-    let cloned_out = out.clone();
-    out.set_backward(
-        Rc::new(move || {
-            s.increment_gradient(1.0 * cloned_out.gradient());
-            other.increment_gradient(1.0 * cloned_out.gradient());
-        })
-    );
-
-    out
-}
-
-fn subtract(s: Value, other: Value) -> Value {
-    add(s, negate(other), Operation::Subtract)
-}
-
-fn multiply(s: Value, other: Value, operation: Operation) -> Value {
-    let a = s.data();
-    let b = other.data();
-    let c = a * b;
-
-    let out = Value::new(
-        InternalValueData::new(
-            c,
-            operation,
-            vec![s.clone(), other.clone()],
-            Rc::new(move || {})
-        )
-    );
-
-    let cloned_out = out.clone();
-    out.set_backward(
-        Rc::new(move || {
-            s.increment_gradient(other.data() * cloned_out.gradient());
-            other.increment_gradient(s.data() * cloned_out.gradient());
-        })
-    );
-
-    out
-}
-
-fn divide(s: Value, other: Value) -> Value {
-    multiply(s, other.powf(-1.0), Operation::Divide)
-}
-
 fn power(s: Value, other: Value) -> Value {
     let a = s.data();
     let b = other.data();
@@ -295,16 +225,17 @@ fn power(s: Value, other: Value) -> Value {
     out
 }
 
-fn negate(s: Value) -> Value {
-    multiply(
-        s,
-        Value::from(
-            -1.0,
-        ),
-        Operation::Negate
-    )
-}
+impl Sum for Value {
+    fn sum<I: Iterator<Item=Self>>(mut iter: I) -> Self {
+        let initial = match iter.next() {
+            Some(x) => x,
+            None => panic!("Cannot sum an empty iterator"),
+        };
+        let tail = iter;
 
+        tail.fold(initial, |acc, x| acc + x)
+    }
+}
 
 impl Add<Value> for Value {
     type Output = Value;
@@ -340,6 +271,31 @@ impl Add<f64> for Value {
     }
 }
 
+fn add(s: Value, other: Value, operation: Operation) -> Value {
+    let a = s.data();
+    let b = other.data();
+    let c = a + b;
+
+    let out = Value::new(
+        InternalValueData::new(
+            c,
+            operation,
+            vec![s.clone(), other.clone()],
+            Rc::new(move || {})
+        )
+    );
+
+    let cloned_out = out.clone();
+    out.set_backward(
+        Rc::new(move || {
+            s.increment_gradient(1.0 * cloned_out.gradient());
+            other.increment_gradient(1.0 * cloned_out.gradient());
+        })
+    );
+
+    out
+}
+
 impl Sub<Value> for Value {
     type Output = Value;
 
@@ -372,6 +328,10 @@ impl Sub<f64> for Value {
     }
 }
 
+fn subtract(s: Value, other: Value) -> Value {
+    add(s, negate(other), Operation::Subtract)
+}
+
 impl Mul<Value> for Value {
     type Output = Value;
 
@@ -400,6 +360,31 @@ impl Mul<f64> for Value {
             Operation::Multiply
         )
     }
+}
+
+fn multiply(s: Value, other: Value, operation: Operation) -> Value {
+    let a = s.data();
+    let b = other.data();
+    let c = a * b;
+
+    let out = Value::new(
+        InternalValueData::new(
+            c,
+            operation,
+            vec![s.clone(), other.clone()],
+            Rc::new(move || {})
+        )
+    );
+
+    let cloned_out = out.clone();
+    out.set_backward(
+        Rc::new(move || {
+            s.increment_gradient(other.data() * cloned_out.gradient());
+            other.increment_gradient(s.data() * cloned_out.gradient());
+        })
+    );
+
+    out
 }
 
 impl Div<Value> for Value {
@@ -431,6 +416,10 @@ impl Div<f64> for Value {
     }
 }
 
+fn divide(s: Value, other: Value) -> Value {
+    multiply(s, other.powf(-1.0), Operation::Divide)
+}
+
 impl Neg for Value {
     type Output = Value;
 
@@ -438,6 +427,22 @@ impl Neg for Value {
         negate(self)
     }
 }
+
+fn negate(s: Value) -> Value {
+    multiply(
+        s,
+        Value::from(
+            -1.0,
+        ),
+        Operation::Negate
+    )
+}
+
+
+
+
+
+
 
 impl fmt::Debug for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
