@@ -7,12 +7,12 @@ use std::fmt;
 
 #[derive(Copy, Clone, Debug)]
 pub enum Operation {
-    Source,
-    Add(f64),
-    Subtract(f64),
-    Multiply(f64),
-    Divide(f64),
-    Power(f64),
+    Input,
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Power,
     Negate,
     ReLU,
 }
@@ -32,7 +32,7 @@ impl Default for ValueData {
         Self {
             data: 0.0,
             gradient: 0.0,
-            _operation: Operation::Source,
+            _operation: Operation::Input,
             _previous: vec![],
             _backward: Rc::new(move || {}),
         }
@@ -226,8 +226,7 @@ fn add(s: Value, other: Value, operation: Operation) -> Value {
 }
 
 fn subtract(s: Value, other: Value) -> Value {
-    let data = other.data();
-    add(s, negate(other), Operation::Subtract(data))
+    add(s, negate(other), Operation::Subtract)
 }
 
 fn multiply(s: Value, other: Value, operation: Operation) -> Value {
@@ -255,8 +254,7 @@ fn multiply(s: Value, other: Value, operation: Operation) -> Value {
 }
 
 fn divide(s: Value, other: Value) -> Value {
-    let data = other.data();
-    multiply(s, other.powf(-1.0), Operation::Divide(data))
+    multiply(s, other.powf(-1.0), Operation::Divide)
 }
 
 fn power(s: Value, other: Value) -> Value {
@@ -267,7 +265,7 @@ fn power(s: Value, other: Value) -> Value {
     let out = Value::new(
         c,
         0.0,
-        Operation::Power(b),
+        Operation::Power,
         vec![s.clone(), other.clone()],
         Rc::new(move || {})
     );
@@ -297,8 +295,7 @@ impl Add<Value> for Value {
     type Output = Value;
 
     fn add(self, other: Value) -> Self::Output {
-        let data = other.clone().data();
-        add(self, other, Operation::Add(data))
+        add(self, other, Operation::Add)
     }
 }
 
@@ -309,7 +306,7 @@ impl Add<Value> for f64 {
         add(
             Value::with_data(self),
             other,
-            Operation::Add(self)
+            Operation::Add
         )
     }
 }
@@ -323,7 +320,7 @@ impl Add<f64> for Value {
             Value::with_data(
                 b,
             ),
-            Operation::Add(b)
+            Operation::Add
         )
     }
 }
@@ -364,8 +361,7 @@ impl Mul<Value> for Value {
     type Output = Value;
 
     fn mul(self, other: Value) -> Self::Output {
-        let data = other.data();
-        multiply(self, other, Operation::Multiply(data))
+        multiply(self, other, Operation::Multiply)
     }
 }
 
@@ -373,7 +369,7 @@ impl Mul<Value> for f64 {
     type Output = Value;
 
     fn mul(self, other: Value) -> Self::Output {
-        multiply(Value::with_data(self), other, Operation::Multiply(self))
+        multiply(Value::with_data(self), other, Operation::Multiply)
     }
 }
 
@@ -386,7 +382,7 @@ impl Mul<f64> for Value {
             Value::with_data(
                 b,
             ),
-            Operation::Multiply(b)
+            Operation::Multiply
         )
     }
 }
