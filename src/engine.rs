@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell};
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::iter::Sum;
@@ -18,6 +18,7 @@ pub enum Operation {
     ReLU,
 }
 
+type BackwardsPropagationFn = fn(internal_value_data: &Ref<InternalValueData>);
 
 #[derive(Clone)]
 pub struct InternalValueData {
@@ -26,7 +27,7 @@ pub struct InternalValueData {
     pub name: Option<String>,
     pub operation: Operation,
     _previous: Vec<Value>,
-    _backward: Rc<dyn Fn()>,
+    _backward: Option<BackwardsPropagationFn>,
 }
 
 impl InternalValueData {
@@ -34,7 +35,7 @@ impl InternalValueData {
         data: f64,
         operation: Operation,
         previous: Vec<Value>,
-        backward: Rc<dyn Fn()>,
+        backward: Option<BackwardsPropagationFn>,
     ) -> InternalValueData {
         InternalValueData {
             data,
@@ -55,7 +56,7 @@ impl Default for InternalValueData {
             name: None,
             operation: Operation::Input,
             _previous: vec![],
-            _backward: Rc::new(move || {}),
+            _backward: None
         }
     }
 }
@@ -129,16 +130,8 @@ impl Value {
         self.borrow_mut().gradient = gradient;
     }
 
-    pub fn increment_gradient(&self, gradient: f64) {
-        self.borrow_mut().gradient += gradient;
-    }
-
-    fn set_backward(&self, _backward: Rc<dyn Fn()>) {
-        self.borrow_mut()._backward = _backward;
-    }
-
     pub fn backward(&mut self) {
-        // Topological order all of the children in the graph
+        // Topological order all of the children in the graph.
         let mut topo = Vec::new();
         let mut visited = HashSet::new();
         fn build_topo(v: Value, visited: &mut HashSet<usize>, topo: &mut Vec<Value>) {
@@ -159,8 +152,11 @@ impl Value {
         // Go one variable at a time and apply the chain rule to get its gradient.
         self.set_gradient(1.0);
         for v in topo.iter().rev() {
-            let backward = &v.borrow()._backward;
-            backward();
+            let internal_value_data = v.borrow();
+
+            if let Some(backward) = &internal_value_data._backward {
+                backward(&internal_value_data);
+            }
         }
     }
 
@@ -190,25 +186,17 @@ impl Value {
         let a = self.data();
         let c = if a > 0.0 { a } else { 0.0 };
 
-        let out = Value::new(
+        Value::new(
             InternalValueData::new(
                 c,
                 Operation::ReLU,
                 vec![self.clone()],
-                Rc::new(move || {})
+                Some(|v| {
+                    let mut s = v._previous[0].borrow_mut();
+                    s.gradient += if v.data > 0.0 { v.gradient } else { 0.0 };
+                })
             )
-        );
-
-        let cloned_out = out.clone();
-        out.set_backward(
-            Rc::new(move || {
-                self.increment_gradient(
-                    if cloned_out.data() > 0.0 { cloned_out.gradient() } else { 0.0 }
-                );
-            })
-        );
-
-        out
+        )
     }
 }
 
@@ -217,23 +205,19 @@ fn power(s: Value, other: Value) -> Value {
     let b = other.data();
     let c = a.powf(b);
 
-    let out = Value::new(
+    Value::new(
         InternalValueData::new(
             c,
             Operation::Power,
             vec![s.clone(), other.clone()],
-            Rc::new(move || {})
+            Some(|v| {
+                let mut s = v._previous[0].borrow_mut();
+                let other = v._previous[1].borrow();
+    
+                s.gradient += other.data * s.data.powf(other.data - 1.0) * v.gradient;
+            })
         )
-    );
-
-    let cloned_out = out.clone();
-    out.set_backward(
-        Rc::new(move || {
-            s.increment_gradient(other.data() * s.data().powf(other.data() - 1.0) * cloned_out.gradient())
-        })
-    );
-
-    out
+    )
 }
 
 impl Sum for Value {
@@ -287,24 +271,20 @@ fn add(s: Value, other: Value, operation: Operation) -> Value {
     let b = other.data();
     let c = a + b;
 
-    let out = Value::new(
+    Value::new(
         InternalValueData::new(
             c,
             operation,
             vec![s.clone(), other.clone()],
-            Rc::new(move || {})
+            Some(|v| {
+                let mut s = v._previous[0].borrow_mut();
+                let mut other = v._previous[1].borrow_mut();
+    
+                s.gradient += 1.0 * v.gradient;
+                other.gradient += 1.0 * v.gradient;
+            })
         )
-    );
-
-    let cloned_out = out.clone();
-    out.set_backward(
-        Rc::new(move || {
-            s.increment_gradient(1.0 * cloned_out.gradient());
-            other.increment_gradient(1.0 * cloned_out.gradient());
-        })
-    );
-
-    out
+    )
 }
 
 impl Sub<Value> for Value {
@@ -378,24 +358,20 @@ fn multiply(s: Value, other: Value, operation: Operation) -> Value {
     let b = other.data();
     let c = a * b;
 
-    let out = Value::new(
+    Value::new(
         InternalValueData::new(
             c,
             operation,
             vec![s.clone(), other.clone()],
-            Rc::new(move || {})
+            Some(|v| {
+                let mut s = v._previous[0].borrow_mut();
+                let mut other = v._previous[1].borrow_mut();
+    
+                s.gradient += other.data * v.gradient;
+                other.gradient += s.data * v.gradient;
+            })
         )
-    );
-
-    let cloned_out = out.clone();
-    out.set_backward(
-        Rc::new(move || {
-            s.increment_gradient(other.data() * cloned_out.gradient());
-            other.increment_gradient(s.data() * cloned_out.gradient());
-        })
-    );
-
-    out
+    )
 }
 
 impl Div<Value> for Value {
@@ -448,12 +424,6 @@ fn negate(s: Value) -> Value {
         Operation::Negate
     )
 }
-
-
-
-
-
-
 
 impl fmt::Debug for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
