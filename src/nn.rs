@@ -8,11 +8,14 @@ pub struct Neuron {
 }
 
 impl Neuron {
-    pub fn new(nin: usize, nonlinear: bool) -> Neuron {
+    pub fn new(nin: usize, nonlinear: bool, neuron_name: &str) -> Neuron {
         let mut rng = rand::thread_rng();
 
         let weights = (0..nin)
-            .map(|_| Value::from(rng.gen_range(-1.0..1.0)))
+            .enumerate()
+            .map(|(i, _)|
+                Value::from(rng.gen_range(-1.0..1.0)).with_name(&format!("{}_weight_{}", neuron_name, i))
+            )
             .collect();
         
         // It is possible and common to initialize the biases to be zero, since the asymmetry breaking
@@ -23,7 +26,7 @@ impl Neuron {
         // performs worse) and it is more common to simply use 0 bias initialization.
         //
         // See: http://cs231n.github.io/neural-networks-2/
-        let bias = Value::from(0.00);
+        let bias = Value::from(0.00).with_name(&format!("{}_bias", neuron_name));
         
         Self {
             weights,
@@ -61,9 +64,15 @@ pub struct Layer {
 }
 
 impl Layer {
-    pub fn new(nin: usize, nout: usize, nonlinear: bool) -> Layer {
+    pub fn new(nin: usize, nout: usize, nonlinear: bool, layer_index: usize) -> Layer {
         let neurons = (0..nout)
-            .map(|_| Neuron::new(nin, nonlinear))
+            .map(|neuron_index|
+                Neuron::new(
+                    nin,
+                    nonlinear,
+                    &format!("layer_{}_neuron_{}", layer_index, neuron_index)
+                )
+            )
             .collect();
         
         Layer {
@@ -104,11 +113,13 @@ impl MLP {
 
         let layers = sizes
             .windows(2)
-            .map(|w|
+            .enumerate()
+            .map(|(layer_index, w)|
                 Layer::new(
                     w[0],
                     w[1],
-                    w[1] != *nouts.last().unwrap()
+                    w[1] != *nouts.last().unwrap(),
+                    layer_index
                 )
             )
             .collect();

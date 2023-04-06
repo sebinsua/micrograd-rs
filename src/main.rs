@@ -2,6 +2,8 @@ use rand::Rng;
 use micrograd_rs::{Value, MLP};
 use itertools::izip;
 
+
+
 fn generate_x_data(start: f64, end: f64, size: usize) -> Vec<Vec<Value>> {
     (0..size)
         .map(|i| vec![Value::from(start + (i as f64) * (end - start) / ((size - 1) as f64))])
@@ -17,15 +19,20 @@ fn main() {
     let mut rng = rand::thread_rng();
 
     // Generate synthetic data for training
-    let x_training_data = generate_x_data(
-        -2.0,
-        2.0,
-        50 as usize
-    );
+    let x_training_data = generate_x_data(-2.0, 2.0, 50 as usize)
+        .iter()
+        .enumerate()
+        .map(|(i, x)|
+            vec![x[0].with_name(&format!("x_training_{}", i))]
+        )
+        .collect::<Vec<Vec<Value>>>();
 
     let y_training_data: Vec<Value> = x_training_data
         .iter()
-        .map(|x| generate_y_value(&x[0], &mut rng, true))
+        .enumerate()
+        .map(|(i, x)|
+            generate_y_value(&x[0], &mut rng, true).with_name(&format!("y_training_{}", i))
+        )
         .collect();
 
     for (x, y) in x_training_data.iter().zip(y_training_data.iter()) {
@@ -36,12 +43,21 @@ fn main() {
     let mut model = MLP::new(1, vec![20, 10, 1]);
 
     fn loss(x_data: &[Vec<Value>], y_data: &[Value], model: &MLP) -> Value {
-        let y_pred = x_data
+        let y_predictions = x_data
             .iter()
-            .map(|x| model.forward(&x))
+            .enumerate()
+            .map(|(i, x)|
+                model.forward(&x)
+                    .iter()
+                    .enumerate()
+                    .map(|(j, y)|
+                        y.with_name(&format!("y_prediction_{}_{}", i, j))
+                    )
+                    .collect::<Vec<_>>()
+            )
             .collect::<Vec<_>>();
         
-        let mse_loss = y_pred
+        let mse_loss = y_predictions
             .iter()
             .zip(y_data.iter())
             .map(|(y1, y2)|
@@ -49,7 +65,7 @@ fn main() {
             )
             .sum::<Value>() / Value::from(y_data.len() as f64);
         
-        mse_loss
+        mse_loss.with_name("mse_loss")
     }
 
     let epochs = 1000;
@@ -75,21 +91,35 @@ fn main() {
     }
 
     // Generate synthetic data for testing
-    let x_testing_data = generate_x_data(
-        -3.0,
-        3.0,
-        10 as usize
-    );
+    let x_testing_data = generate_x_data(-3.0, 3.0, 10 as usize)
+        .iter()
+        .enumerate()
+        .map(|(i, x)|
+            vec![x[0].with_name(&format!("x_testing_{}", i))]
+        )
+        .collect::<Vec<Vec<Value>>>();
 
     let y_testing_data = x_testing_data
         .iter()
-        .map(|x| generate_y_value(&x[0], &mut rng, false))
+        .enumerate()
+        .map(|(i, x)|
+            generate_y_value(&x[0], &mut rng, false).with_name(&format!("y_testing_{}", i))
+        )
         .collect::<Vec<_>>();
 
     // Generate predictions for test data
     let y_predictions = x_testing_data
         .iter()
-        .map(|x| model.forward(&x))
+        .enumerate()
+        .map(|(i, x)|
+            model.forward(&x)
+                .iter()
+                .enumerate()
+                .map(|(j, y)|
+                    y.with_name(&format!("y_prediction_{}_{}", i, j))
+                )
+                .collect::<Vec<_>>()
+        )
         .collect::<Vec<_>>();
     
     for (x_provided, y_predicted, y_expected) in izip!(&x_testing_data, &y_predictions, &y_testing_data) {

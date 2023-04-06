@@ -98,24 +98,21 @@ impl Value {
         self.borrow().name.clone()
     }
 
+    pub fn set_name(&self, name: &str) {
+        self.borrow_mut().name = Some(name.to_string());
+    }
+
+    pub fn with_name(&self, name: &str) -> Value {
+        self.set_name(name);
+        self.clone()
+    }
+
     pub fn operation(&self) -> Operation {
         self.borrow().operation
     }
 
     pub fn data(&self) -> f64 {
         self.borrow().data
-    }
-
-    pub fn gradient(&self) -> f64 {
-        self.borrow().gradient
-    }
-
-    pub fn previous(&self) -> Vec<Value> {
-        self.borrow()._previous.clone()
-    }
-
-    pub fn set_name(&self, name: &str) {
-        self.borrow_mut().name = Some(name.to_string());
     }
 
     pub fn set_data(&self, data: f64) {
@@ -126,8 +123,16 @@ impl Value {
         self.borrow_mut().data -= data;
     }
 
+    pub fn gradient(&self) -> f64 {
+        self.borrow().gradient
+    }
+
     pub fn set_gradient(&self, gradient: f64) {
         self.borrow_mut().gradient = gradient;
+    }
+
+    pub fn previous(&self) -> Vec<Value> {
+        self.borrow()._previous.clone()
     }
 
     pub fn backward(&mut self) {
