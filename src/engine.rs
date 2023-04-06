@@ -1,4 +1,4 @@
-use std::cell::{RefCell};
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::iter::Sum;
@@ -19,7 +19,7 @@ pub enum Operation {
 
 
 #[derive(Clone)]
-pub struct ValueData {
+pub struct InternalValueData {
     pub data: f64,
     pub gradient: f64,
     _operation: Operation,
@@ -27,9 +27,27 @@ pub struct ValueData {
     _backward: Rc<dyn Fn()>,
 }
 
-impl Default for ValueData {
-    fn default() -> Self {
-        Self {
+impl InternalValueData {
+    fn new(
+        data: f64,
+        operation: Operation,
+        previous: Vec<Value>,
+        backward: Rc<dyn Fn()>,
+    ) -> InternalValueData {
+        InternalValueData {
+            data,
+            gradient: 0.0,
+            _operation: operation,
+            _previous: previous,
+            _backward: backward,
+        }
+    }
+}
+
+
+impl Default for InternalValueData {
+    fn default() -> InternalValueData {
+        InternalValueData {
             data: 0.0,
             gradient: 0.0,
             _operation: Operation::Input,
@@ -40,42 +58,16 @@ impl Default for ValueData {
 }
 
 #[derive(Clone)]
-pub struct Value(pub Rc<RefCell<ValueData>>);
+pub struct Value(pub Rc<RefCell<InternalValueData>>);
 
 impl Value {
-    pub fn new(
-        data: f64,
-        gradient: f64,
-        _operation: Operation,
-        _previous: Vec<Value>,
-        _backward: Rc<dyn Fn()>,
-    ) -> Self {
-        Self(
-            Rc::new(
-                RefCell::new(
-                    ValueData {
-                        data,
-                        gradient,
-                        _operation,
-                        _previous,
-                        _backward,
-                    }
-                )
-            )
-        )
+    pub fn from<T>(t: T) -> Value
+    where T: Into<Value> {
+        t.into()
     }
 
-    pub fn with_data(data: f64) -> Self {
-        Self(
-            Rc::new(
-                RefCell::new(
-                    ValueData {
-                        data,
-                        ..Default::default()
-                    }
-                )
-            )
-        )
+    pub fn new(value: InternalValueData) -> Value {
+        Value(Rc::new(RefCell::new(value)))
     }
 
     pub fn operation(&self) -> Operation {
@@ -149,7 +141,7 @@ impl Value {
     pub fn powi(self, otheri: i32) -> Value {
         power(
             self, 
-            Value::with_data(
+            Value::from(
                 otheri as f64,
             )
         )
@@ -158,7 +150,7 @@ impl Value {
     pub fn powf(self, otherf: f64) -> Value {
         power(
             self, 
-            Value::with_data(
+            Value::from(
                 otherf,
             )
         )
@@ -169,11 +161,12 @@ impl Value {
         let c = if a > 0.0 { a } else { 0.0 };
 
         let out = Value::new(
-            c,
-            0.0,
-            Operation::ReLU,
-            vec![self.clone()],
-            Rc::new(move || {})
+            InternalValueData::new(
+                c,
+                Operation::ReLU,
+                vec![self.clone()],
+                Rc::new(move || {})
+            )
         );
 
         let cloned_out = out.clone();
@@ -186,6 +179,17 @@ impl Value {
         );
 
         out
+    }
+}
+
+impl<T: Into<f64>> From<T> for Value {
+    fn from(t: T) -> Value {
+        Value::new(
+            InternalValueData {
+                data: t.into(),
+                ..Default::default()
+            }
+        )
     }
 }
 
@@ -207,11 +211,12 @@ fn add(s: Value, other: Value, operation: Operation) -> Value {
     let c = a + b;
 
     let out = Value::new(
-        c,
-        0.0,
-        operation,
-        vec![s.clone(), other.clone()],
-        Rc::new(move || {})
+        InternalValueData::new(
+            c,
+            operation,
+            vec![s.clone(), other.clone()],
+            Rc::new(move || {})
+        )
     );
 
     let cloned_out = out.clone();
@@ -235,11 +240,12 @@ fn multiply(s: Value, other: Value, operation: Operation) -> Value {
     let c = a * b;
 
     let out = Value::new(
-        c,
-        0.0,
-        operation,
-        vec![s.clone(), other.clone()],
-        Rc::new(move || {})
+        InternalValueData::new(
+            c,
+            operation,
+            vec![s.clone(), other.clone()],
+            Rc::new(move || {})
+        )
     );
 
     let cloned_out = out.clone();
@@ -263,11 +269,12 @@ fn power(s: Value, other: Value) -> Value {
     let c = a.powf(b);
 
     let out = Value::new(
-        c,
-        0.0,
-        Operation::Power,
-        vec![s.clone(), other.clone()],
-        Rc::new(move || {})
+        InternalValueData::new(
+            c,
+            Operation::Power,
+            vec![s.clone(), other.clone()],
+            Rc::new(move || {})
+        )
     );
 
     let cloned_out = out.clone();
@@ -283,7 +290,7 @@ fn power(s: Value, other: Value) -> Value {
 fn negate(s: Value) -> Value {
     multiply(
         s,
-        Value::with_data(
+        Value::from(
             -1.0,
         ),
         Operation::Negate
@@ -304,7 +311,7 @@ impl Add<Value> for f64 {
 
     fn add(self, other: Value) -> Self::Output {
         add(
-            Value::with_data(self),
+            Value::from(self),
             other,
             Operation::Add
         )
@@ -317,7 +324,7 @@ impl Add<f64> for Value {
     fn add(self, b: f64) -> Self::Output {
         add(
             self,
-            Value::with_data(
+            Value::from(
                 b,
             ),
             Operation::Add
@@ -338,7 +345,7 @@ impl Sub<Value> for f64 {
 
     fn sub(self, other: Value) -> Self::Output {
         subtract(
-            Value::with_data(self),
+            Value::from(self),
             other
         )
     }
@@ -350,7 +357,7 @@ impl Sub<f64> for Value {
     fn sub(self, b: f64) -> Self::Output {
         subtract(
             self,
-            Value::with_data(
+            Value::from(
                 b,
             )
         )
@@ -369,7 +376,7 @@ impl Mul<Value> for f64 {
     type Output = Value;
 
     fn mul(self, other: Value) -> Self::Output {
-        multiply(Value::with_data(self), other, Operation::Multiply)
+        multiply(Value::from(self), other, Operation::Multiply)
     }
 }
 
@@ -379,7 +386,7 @@ impl Mul<f64> for Value {
     fn mul(self, b: f64) -> Self::Output {
         multiply(
             self,
-            Value::with_data(
+            Value::from(
                 b,
             ),
             Operation::Multiply
@@ -399,7 +406,7 @@ impl Div<Value> for f64 {
     type Output = Value;
 
     fn div(self, other: Value) -> Self::Output {
-        divide(Value::with_data(self), other)
+        divide(Value::from(self), other)
     }
 }
 
@@ -409,7 +416,7 @@ impl Div<f64> for Value {
     fn div(self, b: f64) -> Self::Output {
         divide(
             self,
-            Value::with_data(
+            Value::from(
                 b,
             )
         )
@@ -450,10 +457,10 @@ mod tests {
 
     #[test]
     fn test_value_add_value() {
-        let a = Value::with_data(
+        let a = Value::from(
             1.0,
         );
-        let b = Value::with_data(
+        let b = Value::from(
             2.0,
         );
         
@@ -463,7 +470,7 @@ mod tests {
 
     #[test]
     fn test_value_add_f64() {
-        let a = Value::with_data(
+        let a = Value::from(
             1.0,
         );
         let b = 10.0;
@@ -474,10 +481,10 @@ mod tests {
 
     #[test]
     fn test_value_sub_value() {
-        let a = Value::with_data(
+        let a = Value::from(
             15.0,
         );
-        let b = Value::with_data(
+        let b = Value::from(
             12.0,
         );
         
@@ -487,7 +494,7 @@ mod tests {
 
     #[test]
     fn test_value_sub_f64() {
-        let a = Value::with_data(
+        let a = Value::from(
             16.0,
         );
         let b = 10.0;
@@ -498,10 +505,10 @@ mod tests {
 
     #[test]
     fn test_value_multiply_value() {
-        let a = Value::with_data(
+        let a = Value::from(
             33.0,
         );
-        let b = Value::with_data(
+        let b = Value::from(
             3.0,
         );
         
@@ -511,7 +518,7 @@ mod tests {
 
     #[test]
     fn test_value_multiply_f64() {
-        let a = Value::with_data(
+        let a = Value::from(
             33.0,
         );
         let b = 3.0;
@@ -522,10 +529,10 @@ mod tests {
 
     #[test]
     fn test_value_divide_value() {
-        let a = Value::with_data(
+        let a = Value::from(
             50.0,
         );
-        let b = Value::with_data(
+        let b = Value::from(
             2.0,
         );
         
@@ -535,7 +542,7 @@ mod tests {
 
     #[test]
     fn test_value_divide_f64() {
-        let a = Value::with_data(
+        let a = Value::from(
             20.0,
         );
         let b = 2.0;
@@ -546,10 +553,10 @@ mod tests {
 
     #[test]
     fn test_value_pow_value() {
-        let a = Value::with_data(
+        let a = Value::from(
             2.0,
         );
-        let b = Value::with_data(
+        let b = Value::from(
             2.0,
         );
         
@@ -559,7 +566,7 @@ mod tests {
 
     #[test]
     fn test_value_pow_f64() {
-        let a = Value::with_data(
+        let a = Value::from(
             2.0,
         );
         let b = 2.0;
@@ -570,7 +577,7 @@ mod tests {
 
     #[test]
     fn test_value_negate() {
-        let a = Value::with_data(
+        let a = Value::from(
             3.0,
         );
         
@@ -581,8 +588,8 @@ mod tests {
 
     #[test]
     fn test_value_relu() {
-        let a = Value::with_data(-3.0);
-        let b = Value::with_data(4.0);
+        let a = Value::from(-3.0);
+        let b = Value::from(4.0);
 
         let relu_a = a.relu();
         let relu_b = b.relu();
@@ -593,9 +600,9 @@ mod tests {
 
     #[test]
     fn test_gradient_descent() {
-        let a = Value::with_data(1.0);
-        let b = Value::with_data(2.0);
-        let c = Value::with_data(3.0);
+        let a = Value::from(1.0);
+        let b = Value::from(2.0);
+        let c = Value::from(3.0);
 
         let mut y = a.clone() * b.clone() + c.clone();
 
@@ -608,8 +615,8 @@ mod tests {
 
     #[test]
     fn test_gradient_descent_from_readme() {
-        let a = Value::with_data(-4.0);
-        let b = Value::with_data(2.0);
+        let a = Value::from(-4.0);
+        let b = Value::from(2.0);
         let mut c = a.clone() + b.clone();
         let mut d = a.clone() * b.clone() + b.clone().powf(3.0);
         c = c.clone() + (c.clone() + 1.0);

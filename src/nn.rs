@@ -10,8 +10,8 @@ pub struct Neuron {
 impl Neuron {
     pub fn new(nin: usize, nonlinear: bool) -> Self {
         let mut rng = rand::thread_rng();
-        let weight = (0..nin).map(|_| Value::with_data(rng.gen_range(-1.0..=1.0))).collect();
-        let bias = Value::with_data(0.0);
+        let weight = (0..nin).map(|_| Value::from(rng.gen_range(-1.0..=1.0))).collect();
+        let bias = Value::from(0.0);
         
         Self {
             weight,

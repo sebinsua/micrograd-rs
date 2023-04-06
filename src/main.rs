@@ -3,13 +3,13 @@ use micrograd_rs::{Value, MLP};
 
 fn generate_x_data(start: f64, end: f64, size: usize) -> Vec<Vec<Value>> {
     (0..size)
-        .map(|i| vec![Value::with_data(start + (i as f64) * (end - start) / ((size - 1) as f64))])
+        .map(|i| vec![Value::from(start + (i as f64) * (end - start) / ((size - 1) as f64))])
         .collect()
 }
 
 fn generate_y_value(x: &Value, rng: &mut rand::rngs::ThreadRng, with_noise: bool) -> Value {
     let noise = if with_noise == true { rng.gen_range(-0.1..=0.1) } else { 0.0 };
-    Value::with_data(2.0 * x.data() + 3.0 + noise)
+    Value::from(2.0 * x.data() + 3.0 + noise)
 }
 
 fn main() {
@@ -37,7 +37,7 @@ fn main() {
             .zip(y_data.iter())
             .map(|(y1, y2)| (y1[0].clone() - y2.clone()).powi(2))
             .sum::<Value>()
-            / Value::with_data(y_data.len() as f64);
+            / Value::from(y_data.len() as f64);
         mse_loss
     }
 
@@ -75,6 +75,6 @@ fn main() {
         .zip(x_test.iter().map(|x| generate_y_value(&x[0], &mut rng, false)))
         .map(|(y_pred, y_true)| (y_true - y_pred[0].clone()).powi(2))
         .sum::<Value>()
-        / Value::with_data(x_test.len() as f64);
+        / Value::from(x_test.len() as f64);
     println!("Test set mean squared error: {}", mse_test.data());
 }
