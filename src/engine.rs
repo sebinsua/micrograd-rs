@@ -133,7 +133,6 @@ impl Value {
     pub fn backward(&mut self) {
         // Topological order all of the children in the graph.
         let mut topo = Vec::new();
-        let mut visited = HashSet::new();
         fn build_topo(v: Value, visited: &mut HashSet<usize>, topo: &mut Vec<Value>) {
             let id = v.as_ptr() as usize;
             if !visited.contains(&id) {
@@ -147,7 +146,11 @@ impl Value {
             }
         }
 
-        build_topo(self.clone(), &mut visited, &mut topo);
+        build_topo(
+            self.clone(),
+            &mut HashSet::new(),
+            &mut topo
+        );
 
         // Go one variable at a time and apply the chain rule to get its gradient.
         self.set_gradient(1.0);
