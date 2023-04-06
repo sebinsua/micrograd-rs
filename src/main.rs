@@ -50,7 +50,7 @@ fn main() {
         let mut total_loss = loss(&x_data, &y_data, &model);
 
         // Backward pass
-        model.zero_out_gradients();
+        model.zero_gradients();
         total_loss.backward();
 
         // Parameter update (SGD)

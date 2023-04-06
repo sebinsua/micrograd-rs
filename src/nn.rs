@@ -2,40 +2,54 @@ use rand::Rng;
 use crate::engine::Value;
 
 pub struct Neuron {
-    weight: Vec<Value>,
+    weights: Vec<Value>,
     bias: Value,
     nonlinear: bool,
 }
 
 impl Neuron {
-    pub fn new(nin: usize, nonlinear: bool) -> Self {
+    pub fn new(nin: usize, nonlinear: bool) -> Neuron {
         let mut rng = rand::thread_rng();
-        let weight = (0..nin).map(|_| Value::from(rng.gen_range(-1.0..=1.0))).collect();
-        let bias = Value::from(0.0);
+
+        let weights = (0..nin)
+            .map(|_| Value::from(rng.gen_range(-1.0..1.0)))
+            .collect();
+        
+        // It is possible and common to initialize the biases to be zero, since the asymmetry breaking
+        // is provided by the small random numbers in the weights. For ReLU non-linearities, some people
+        // like to use small constant value such as 0.01 for all biases because this ensures that all ReLU
+        // units fire in the beginning and therefore obtain and propagate some gradient. However, it is not
+        // clear if this provides a consistent improvement (in fact some results seem to indicate that this
+        // performs worse) and it is more common to simply use 0 bias initialization.
+        //
+        // See: http://cs231n.github.io/neural-networks-2/
+        let bias = Value::from(0.00);
         
         Self {
-            weight,
+            weights,
             bias, 
             nonlinear
         }
     }
 
     pub fn forward(&self, x: &[Value]) -> Value {
-        let act = self.weight.iter().zip(x.iter())
+        let act = self.weights.iter().zip(x.iter())
             .map(|(wi, xi)| wi.clone() * xi.clone())
             .sum::<Value>() + self.bias.clone();
             
         if self.nonlinear { act.relu() } else { act }
     }
 
-    pub fn parameters(&self) -> Vec<&Value> {
-        let mut params = Vec::with_capacity(self.weight.len() + 1);
-        params.extend(self.weight.iter());
-        params.push(&self.bias);
-        params
+    pub fn parameters(&self) -> Vec<Value> {
+        let parameters = [self.bias.clone()]
+            .into_iter()
+            .chain(self.weights.clone())
+            .collect::<Vec<Value>>();
+
+        parameters
     }
 
-    pub fn zero_out_gradients(&mut self) {
+    pub fn zero_gradients(&mut self) {
         for p in self.parameters() {
             p.set_gradient(0.0);
         }
@@ -47,26 +61,32 @@ pub struct Layer {
 }
 
 impl Layer {
-    pub fn new(nin: usize, nout: usize, nonlinear: bool) -> Self {
-        let neurons = (0..nout).map(|_| Neuron::new(nin, nonlinear)).collect();
+    pub fn new(nin: usize, nout: usize, nonlinear: bool) -> Layer {
+        let neurons = (0..nout)
+            .map(|_| Neuron::new(nin, nonlinear))
+            .collect();
         
-        Self {
+        Layer {
             neurons
         }
     }
 
     pub fn forward(&self, x: &[Value]) -> Vec<Value> {
-        self.neurons.iter().map(|n| n.forward(&x)).collect()
+        let neuron_outputs = self.neurons
+            .iter()
+            .map(|n| n.forward(&x))
+            .collect();
+
+        neuron_outputs
     }
 
-    pub fn parameters(&self) -> Vec<&Value> {
-        self.neurons.iter().flat_map(|n| n.parameters()).collect()
-    }
-
-    pub fn zero_out_gradients(&mut self) {
-        for p in self.parameters() {
-            p.set_gradient(0.0);
-        }
+    pub fn parameters(&self) -> Vec<Value> {
+        let parameters = self.neurons
+            .iter()
+            .flat_map(|n| n.parameters())
+            .collect();
+    
+        parameters
     }
 }
 
@@ -75,11 +95,25 @@ pub struct MLP {
 }
 
 impl MLP {
-    pub fn new(nin: usize, nouts: Vec<usize>) -> Self {
-        let sz = [nin].iter().chain(nouts.iter()).copied().collect::<Vec<_>>();
-        let layers = sz.windows(2).map(|w| Layer::new(w[0], w[1], w[1] != *nouts.last().unwrap())).collect();
+    pub fn new(nin: usize, nouts: Vec<usize>) -> MLP {
+        let sizes = [nin]
+            .iter()
+            .chain(nouts.iter())
+            .copied()
+            .collect::<Vec<_>>();
+
+        let layers = sizes
+            .windows(2)
+            .map(|w|
+                Layer::new(
+                    w[0],
+                    w[1],
+                    w[1] != *nouts.last().unwrap()
+                )
+            )
+            .collect();
         
-        Self {
+        MLP {
             layers
         }
     }
@@ -87,18 +121,24 @@ impl MLP {
     pub fn forward(&self, x: &[Value]) -> Vec<Value> {
         let mut output = x.to_vec();
         for layer in &self.layers {
-            let forwarded_output = layer.forward(&output);
-            output = forwarded_output.into_iter().collect::<Vec<Value>>();
+            output = layer.forward(&output)
+                .into_iter()
+                .collect::<Vec<Value>>();
         }
         
         output
     }
 
-    pub fn parameters(&self) -> Vec<&Value> {
-        self.layers.iter().flat_map(|l| l.parameters()).collect()
+    pub fn parameters(&self) -> Vec<Value> {
+        let parameters = self.layers
+            .iter()
+            .flat_map(|l| l.parameters())
+            .collect();
+
+        parameters
     }
 
-    pub fn zero_out_gradients(&mut self) {
+    pub fn zero_gradients(&mut self) {
         for p in self.parameters() {
             p.set_gradient(0.0);
         }
