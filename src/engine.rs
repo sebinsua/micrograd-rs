@@ -23,6 +23,7 @@ pub enum Operation {
 pub struct InternalValueData {
     pub data: f64,
     pub gradient: f64,
+    pub name: Option<String>,
     pub operation: Operation,
     _previous: Vec<Value>,
     _backward: Rc<dyn Fn()>,
@@ -38,6 +39,7 @@ impl InternalValueData {
         InternalValueData {
             data,
             gradient: 0.0,
+            name: None,
             operation: operation,
             _previous: previous,
             _backward: backward,
@@ -50,6 +52,7 @@ impl Default for InternalValueData {
         InternalValueData {
             data: 0.0,
             gradient: 0.0,
+            name: None,
             operation: Operation::Input,
             _previous: vec![],
             _backward: Rc::new(move || {}),
@@ -90,6 +93,10 @@ impl Value {
         Value(Rc::new(RefCell::new(value)))
     }
 
+    pub fn name(&self) -> Option<String> {
+        self.borrow().name.clone()
+    }
+
     pub fn operation(&self) -> Operation {
         self.borrow().operation
     }
@@ -104,7 +111,11 @@ impl Value {
 
     pub fn previous(&self) -> Vec<Value> {
         self.borrow()._previous.clone()
-    }    
+    }
+
+    pub fn set_name(&self, name: &str) {
+        self.borrow_mut().name = Some(name.to_string());
+    }
 
     pub fn set_data(&self, data: f64) {
         self.borrow_mut().data = data;
