@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::hash::Hash;
 use std::cell::{Ref, RefCell};
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -6,7 +8,10 @@ use std::ops::{Add, Sub, Mul, Div, Neg, Deref};
 use std::fmt;
 
 
-#[derive(Copy, Clone, Debug)]
+static NEXT_VALUE_ID: AtomicUsize = AtomicUsize::new(0);
+
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Operation {
     Input,
     Add,
@@ -22,6 +27,7 @@ type BackwardsPropagationFn = fn(internal_value_data: &Ref<InternalValueData>);
 
 #[derive(Clone)]
 pub struct InternalValueData {
+    _id: usize,
     pub data: f64,
     pub gradient: f64,
     pub name: Option<String>,
@@ -37,7 +43,9 @@ impl InternalValueData {
         previous: Vec<Value>,
         backward: Option<BackwardsPropagationFn>,
     ) -> InternalValueData {
+        let id = NEXT_VALUE_ID.fetch_add(1, Ordering::Relaxed);
         InternalValueData {
+            _id: id,
             data,
             gradient: 0.0,
             name: None,
@@ -48,9 +56,39 @@ impl InternalValueData {
     }
 }
 
+impl PartialEq for InternalValueData {
+    fn eq(&self, other: &Self) -> bool {
+            self._id == other._id
+            && self.name == other.name
+            && self.operation == other.operation
+            && self.data == other.data
+            && self.gradient == other.gradient
+            // Comparing `_previous` is too expensive and so we added
+            // `_id` to faciliate cheaper comparisons.
+            // && self._previous == other._previous
+    }
+}
+
+impl Eq for InternalValueData {}
+
+impl Hash for InternalValueData {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self._id.hash(state);
+        self.name.hash(state);
+        self.operation.hash(state);
+        self.data.to_bits().hash(state);
+        self.gradient.to_bits().hash(state);
+        // Hashing `_previous` is too expensive and so we added
+        // `_id` to faciliate cheaper hashes.
+        // self._previous.hash(state);
+    }
+}
+
 impl Default for InternalValueData {
     fn default() -> InternalValueData {
+        let id = NEXT_VALUE_ID.fetch_add(1, Ordering::Relaxed);
         InternalValueData {
+            _id: id,
             data: 0.0,
             gradient: 0.0,
             name: None,
@@ -62,7 +100,7 @@ impl Default for InternalValueData {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct Value(pub Rc<RefCell<InternalValueData>>);
 
 impl Deref for Value {
@@ -70,6 +108,12 @@ impl Deref for Value {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl Hash for Value {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.borrow().hash(state);
     }
 }
 
@@ -92,6 +136,10 @@ impl Value {
 
     pub fn new(value: InternalValueData) -> Value {
         Value(Rc::new(RefCell::new(value)))
+    }
+
+    pub fn id(&self) -> usize {
+        self.borrow()._id
     }
 
     pub fn name(&self) -> Option<String> {
@@ -636,7 +684,6 @@ impl fmt::Debug for Value {
             .field("data", &self.data())
             .field("gradient", &self.gradient())
             .field("operation", &self.operation())
-            .field("_backward", &"<closure>")
             .field("_previous", &self.previous().iter().map(|x| x.data()).collect::<Vec<f64>>())
             .finish()
     }

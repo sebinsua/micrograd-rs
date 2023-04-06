@@ -1,7 +1,7 @@
+use std::{env, vec, fs};
 use rand::Rng;
-use micrograd_rs::{Value, MLP};
 use itertools::izip;
-
+use micrograd_rs::{Value, MLP, create_graph};
 
 
 fn generate_x_data(start: f64, end: f64, size: usize) -> Vec<Vec<Value>> {
@@ -15,11 +15,31 @@ fn generate_y_value(x: &Value, rng: &mut rand::rngs::ThreadRng, with_noise: bool
     Value::from(2.0 * x.data() + 3.0 + noise)
 }
 
+fn get_graphviz_output_arg() -> bool {
+    let mut graphviz_output_arg = false;
+
+    let mut args = env::args().skip(1).collect::<Vec<_>>();
+    while let Some(arg) = args.pop() {
+        match arg.as_str() {
+            "--graphviz-output" => {
+                graphviz_output_arg = true;
+            },
+            _ => {
+                panic!("Unknown argument: {}", arg);
+            }
+        }
+    }
+
+    graphviz_output_arg
+}
+
 fn main() {
+    let should_output_graphviz = get_graphviz_output_arg();
+
     let mut rng = rand::thread_rng();
 
     // Generate synthetic data for training
-    let x_training_data = generate_x_data(-2.0, 2.0, 50 as usize)
+    let x_training_data = generate_x_data(-2.0, 2.0, 20 as usize)
         .iter()
         .enumerate()
         .map(|(i, x)|
@@ -40,7 +60,7 @@ fn main() {
     }
 
     // Creating a model
-    let mut model = MLP::new(1, vec![20, 10, 1]);
+    let mut model = MLP::new(1, vec![5, 5, 1]);
 
     fn loss(x_data: &[Vec<Value>], y_data: &[Value], model: &MLP) -> Value {
         let y_predictions = x_data
@@ -121,7 +141,7 @@ fn main() {
                 .collect::<Vec<_>>()
         )
         .collect::<Vec<_>>();
-    
+
     for (x_provided, y_predicted, y_expected) in izip!(&x_testing_data, &y_predictions, &y_testing_data) {
         println!("x: {:.2}, y: {:.2} vs {:.2}", x_provided[0].data(), y_predicted[0].data(), y_expected.data());
     }
@@ -133,7 +153,15 @@ fn main() {
         .map(|(y_predicted, y_expected)|
             (&y_expected - &y_predicted[0]).powi(2)
         )
-        .sum::<Value>() / Value::from(x_testing_data.len() as f64);
+        .sum::<Value>() / Value::from(x_testing_data.len() as f64)
+        .with_name("mse_test");
 
     println!("Test set mean squared error: {}", mse_test.data());
+
+    if should_output_graphviz {
+        fs::write(
+            "./graph.dot",
+            format!("{}", create_graph(&mse_test))
+        ).expect("Unable to write file: ./graph.dot");
+    }
 }

@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 itertools = "0.10.5"
 rand = "0.8.5"
+tabbycat = "0.1.3"
