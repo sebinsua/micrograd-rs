@@ -2,8 +2,9 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::iter::Sum;
-use std::ops::{Add, Sub, Mul, Div, Neg};
+use std::ops::{Add, Sub, Mul, Div, Neg, Deref};
 use std::fmt;
+
 
 #[derive(Copy, Clone, Debug)]
 pub enum Operation {
@@ -22,7 +23,7 @@ pub enum Operation {
 pub struct InternalValueData {
     pub data: f64,
     pub gradient: f64,
-    _operation: Operation,
+    pub operation: Operation,
     _previous: Vec<Value>,
     _backward: Rc<dyn Fn()>,
 }
@@ -37,25 +38,25 @@ impl InternalValueData {
         InternalValueData {
             data,
             gradient: 0.0,
-            _operation: operation,
+            operation: operation,
             _previous: previous,
             _backward: backward,
         }
     }
 }
 
-
 impl Default for InternalValueData {
     fn default() -> InternalValueData {
         InternalValueData {
             data: 0.0,
             gradient: 0.0,
-            _operation: Operation::Input,
+            operation: Operation::Input,
             _previous: vec![],
             _backward: Rc::new(move || {}),
         }
     }
 }
+
 
 #[derive(Clone)]
 pub struct Value(pub Rc<RefCell<InternalValueData>>);
@@ -71,40 +72,39 @@ impl Value {
     }
 
     pub fn operation(&self) -> Operation {
-        self.0.as_ref().borrow()._operation
+        self.borrow().operation
     }
 
     pub fn data(&self) -> f64 {
-        self.0.as_ref().borrow().data
+        self.borrow().data
     }
 
     pub fn gradient(&self) -> f64 {
-        self.0.as_ref().borrow().gradient
+        self.borrow().gradient
     }
 
     pub fn previous(&self) -> Vec<Value> {
-        self.0.as_ref().borrow()._previous.clone()
+        self.borrow()._previous.clone()
     }    
 
     pub fn set_data(&self, data: f64) {
-        self.0.as_ref().borrow_mut().data = data;
+        self.borrow_mut().data = data;
     }
 
     pub fn decrement_data(&self, data: f64) {
-        self.0.as_ref().borrow_mut().data -= data;
+        self.borrow_mut().data -= data;
     }
 
     pub fn set_gradient(&self, gradient: f64) {
-        self.0.as_ref().borrow_mut().gradient = gradient;
+        self.borrow_mut().gradient = gradient;
     }
 
     pub fn increment_gradient(&self, gradient: f64) {
-        self.0.as_ref().borrow_mut().gradient += gradient;
+        self.borrow_mut().gradient += gradient;
     }
 
     fn set_backward(&self, _backward: Rc<dyn Fn()>) {
-        // println!("6. maybe about to blow up? backward");
-        self.0.as_ref().borrow_mut()._backward = _backward;
+        self.borrow_mut()._backward = _backward;
     }
 
     pub fn backward(&mut self) {
@@ -112,7 +112,7 @@ impl Value {
         let mut topo = Vec::new();
         let mut visited = HashSet::new();
         fn build_topo(v: Value, visited: &mut HashSet<usize>, topo: &mut Vec<Value>) {
-            let id = v.0.as_ptr() as usize;
+            let id = v.as_ptr() as usize;
             if !visited.contains(&id) {
                 visited.insert(id);
 
@@ -129,7 +129,7 @@ impl Value {
         // Go one variable at a time and apply the chain rule to get its gradient.
         self.set_gradient(1.0);
         for v in topo.iter().rev() {
-            let backward = &v.0.borrow()._backward;
+            let backward = &v.borrow()._backward;
             backward();
         }
     }
@@ -179,6 +179,14 @@ impl Value {
         );
 
         out
+    }
+}
+
+impl Deref for Value {
+    type Target = Rc<RefCell<InternalValueData>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -431,15 +439,14 @@ impl Neg for Value {
     }
 }
 
-
 impl fmt::Debug for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Value")
             .field("data", &self.data())
             .field("gradient", &self.gradient())
+            .field("operation", &self.operation())
             .field("_backward", &"<closure>")
             .field("_previous", &self.previous().iter().map(|x| x.data()).collect::<Vec<f64>>())
-            .field("_operation", &self.operation())
             .finish()
     }
 }
