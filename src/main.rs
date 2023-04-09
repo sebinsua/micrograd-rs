@@ -62,7 +62,7 @@ fn main() {
     // Creating a model
     let mut model = MLP::new(1, vec![5, 5, 1]);
 
-    fn loss(x_data: &[Vec<Value>], y_data: &[Value], model: &MLP) -> Value {
+    fn loss(x_data: &[Vec<Value>], y_data: &Vec<Value>, model: &MLP) -> Value {
         let y_predictions = x_data
             .iter()
             .enumerate()

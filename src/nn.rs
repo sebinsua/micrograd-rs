@@ -35,7 +35,7 @@ impl Neuron {
         }
     }
 
-    pub fn forward(&self, x: &[Value]) -> Value {
+    pub fn forward(&self, x: &Vec<Value>) -> Value {
         let act = &self.weights.iter().zip(x.iter())
             .map(|(wi, xi)| wi * xi)
             .sum::<Value>() + &self.bias;
@@ -80,7 +80,7 @@ impl Layer {
         }
     }
 
-    pub fn forward(&self, x: &[Value]) -> Vec<Value> {
+    pub fn forward(&self, x: &Vec<Value>) -> Vec<Value> {
         let neuron_outputs = self.neurons
             .iter()
             .map(|n| n.forward(&x))
@@ -129,7 +129,7 @@ impl MLP {
         }
     }
 
-    pub fn forward(&self, x: &[Value]) -> Vec<Value> {
+    pub fn forward(&self, x: &Vec<Value>) -> Vec<Value> {
         let mut output = x.to_vec();
         for layer in &self.layers {
             output = layer.forward(&output)
