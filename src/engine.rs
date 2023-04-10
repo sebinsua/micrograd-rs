@@ -15,23 +15,28 @@ static NEXT_VALUE_ID: AtomicUsize = AtomicUsize::new(0);
 pub enum Operation {
     Input,
     Add,
-    Subtract,
     Multiply,
-    Divide,
     Power,
-    Negate,
     ReLU,
+    // The `Negate`, `Divide`, and `Subtract` operations are implemented using the operations defined above,
+    // which means that when visualizing the computation graph the inputs to these operations will not make
+    // sense unless you check the implementation of the operation.
+    Negate,
+    Divide,
+    Subtract,
 }
 
 type BackwardsPropagationFn = fn(internal_value_data: &Ref<InternalValueData>);
 
 #[derive(Clone)]
 pub struct InternalValueData {
+    // `_id`, `_name`, and `_operation` are used to facilitate debugging, to generate unique names for each value
+    // when visualizing the computation graph, and to facilitate cheaper comparisons and hashing.
     _id: usize,
+    _name: Option<String>,
+    _operation: Operation,
     pub data: f64,
     pub gradient: f64,
-    pub name: Option<String>,
-    pub operation: Operation,
     _previous: Vec<Value>,
     _backward: Option<BackwardsPropagationFn>,
 }
@@ -46,10 +51,10 @@ impl InternalValueData {
         let id = NEXT_VALUE_ID.fetch_add(1, Ordering::Relaxed);
         InternalValueData {
             _id: id,
+            _name: None,
+            _operation: operation,
             data,
             gradient: 0.0,
-            name: None,
-            operation: operation,
             _previous: previous,
             _backward: backward,
         }
@@ -59,8 +64,8 @@ impl InternalValueData {
 impl PartialEq for InternalValueData {
     fn eq(&self, other: &Self) -> bool {
             self._id == other._id
-            && self.name == other.name
-            && self.operation == other.operation
+            && self._name == other._name
+            && self._operation == other._operation
             && self.data == other.data
             && self.gradient == other.gradient
             // Comparing `_previous` is too expensive and so we added
@@ -74,8 +79,8 @@ impl Eq for InternalValueData {}
 impl Hash for InternalValueData {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self._id.hash(state);
-        self.name.hash(state);
-        self.operation.hash(state);
+        self._name.hash(state);
+        self._operation.hash(state);
         self.data.to_bits().hash(state);
         self.gradient.to_bits().hash(state);
         // Hashing `_previous` is too expensive and so we added
@@ -89,12 +94,12 @@ impl Default for InternalValueData {
         let id = NEXT_VALUE_ID.fetch_add(1, Ordering::Relaxed);
         InternalValueData {
             _id: id,
+            _name: None,
+            _operation: Operation::Input,
             data: 0.0,
             gradient: 0.0,
-            name: None,
-            operation: Operation::Input,
             _previous: vec![],
-            _backward: None
+            _backward: None,
         }
     }
 }
@@ -143,11 +148,11 @@ impl Value {
     }
 
     pub fn name(&self) -> Option<String> {
-        self.borrow().name.clone()
+        self.borrow()._name.clone()
     }
 
     pub fn set_name(&self, name: &str) {
-        self.borrow_mut().name = Some(name.to_string());
+        self.borrow_mut()._name = Some(name.to_string());
     }
 
     pub fn with_name(&self, name: &str) -> Value {
@@ -156,7 +161,7 @@ impl Value {
     }
 
     pub fn operation(&self) -> Operation {
-        self.borrow().operation
+        self.borrow()._operation
     }
 
     pub fn data(&self) -> f64 {
@@ -183,35 +188,65 @@ impl Value {
         self.borrow()._previous.clone()
     }
 
+    // The `backward` method performs the backward pass of the backpropagation algorithm on a
+    // computational graph, computing gradients for each `Value`. Backpropagation
+    // is commonly used in training machine learning models, particularly neural networks,
+    // and relies on the chain rule of calculus for efficient gradient computation.
     pub fn backward(&mut self) {
-        // Topological order all of the children in the graph.
-        let mut topo = Vec::new();
-        fn build_topo(v: Value, visited: &mut HashSet<usize>, topo: &mut Vec<Value>) {
-            let id = v.as_ptr() as usize;
+        // The `sort_topologically` function is a recursive helper function used for performing 
+        // a topological sort on the graph. It traverses the graph in a depth-first manner, adding
+        // values to the `topologically_sorted_values` vector after each all their `_previous` values
+        // have been visited.
+        fn sort_topologically(
+            value: Value,
+            visited: &mut HashSet<usize>,
+            topologically_sorted_values: &mut Vec<Value>
+        ) {
+            let id = value.as_ptr() as usize;
             if !visited.contains(&id) {
                 visited.insert(id);
 
-                for child in v.previous() {
-                    build_topo(child, visited, topo);
+                for child in value.previous() {
+                    sort_topologically(
+                        child,
+                        visited,
+                        topologically_sorted_values
+                    );
                 }
 
-                topo.push(v);
+                topologically_sorted_values.push(value);
             }
         }
 
-        build_topo(
+        // Perform a topological sort of all of the `_previous` values in the graph so that the
+        // output values are after their respective input values.
+        let mut topologically_sorted_values = Vec::new();
+        sort_topologically(
             self.clone(),
             &mut HashSet::new(),
-            &mut topo
+            &mut topologically_sorted_values
         );
 
-        // Go one variable at a time and apply the chain rule to get its gradient.
-        self.set_gradient(1.0);
-        for v in topo.iter().rev() {
-            let internal_value_data = v.borrow();
+        // Reverse the topologically sorted values so that we can start at the output value and
+        // propagate the gradients backwards through the graph towards the input values, ensuring
+        // the correct order for the backpropagation process.
+        topologically_sorted_values = topologically_sorted_values.into_iter().rev().collect();
 
-            if let Some(backward) = &internal_value_data._backward {
-                backward(&internal_value_data);
+        // The derivative of a value with respect to itself is always 1.0 so we set the gradient
+        // of the output value to this to begin with before beginning backwards propagation.
+        topologically_sorted_values[0].set_gradient(1.0);
+
+        // Given the reversed topologically ordered values, we will be starting at the output value
+        // and applying the chain rule on each iteration to update the gradients of the current value's 
+        // previous values.
+        // 
+        // The gradient of each value is a scalar float representing the partial derivative of the output
+        // with respect to the input.
+        for value in topologically_sorted_values.iter() {
+            let internal_value_data = value.borrow();
+
+            if let Some(update_gradients_of_previous_inputs) = &internal_value_data._backward {
+                update_gradients_of_previous_inputs(&internal_value_data);
             }
         }
     }
@@ -239,38 +274,66 @@ impl Value {
     }
 
     pub fn relu(&self) -> Value {
-        let a = self.data();
-        let c = if a > 0.0 { a } else { 0.0 };
-
-        Value::new(
-            InternalValueData::new(
-                c,
-                Operation::ReLU,
-                vec![self.clone()],
-                Some(|v| {
-                    let mut s = v._previous[0].borrow_mut();
-                    s.gradient += if v.data > 0.0 { v.gradient } else { 0.0 };
-                })
-            )
-        )
+        relu(self)
     }
 }
 
-fn power(s: &Value, other: &Value) -> Value {
-    let a = s.data();
-    let b = other.data();
+// The `relu` function applies the Rectified Linear Unit (ReLU) activation function on an input `Value`.
+// ReLU is defined as: f(x) = max(0, x), where x is the input.
+//
+// The derivative of ReLU with respect to its input (`input_a`) is:
+//
+// ∂current_value/∂input_a (the local gradient) = 1.0, if input_a > 0
+//                                              = 0.0, otherwise
+//
+// The gradient accumulation update rule for the input value (`input_a.gradient`) is:
+//
+// ∂L/∂input_a += (∂current_value/∂input_a) * (∂L/∂current_value)
+//
+// Where L is the final output value (e.g. the loss function).
+fn relu(input: &Value) -> Value {
+    let a = input.data();
+    let c = if a > 0.0 { a } else { 0.0 };
+
+    Value::new(
+        InternalValueData::new(
+            c,
+            Operation::ReLU,
+            vec![input.clone()],
+            Some(|current_value| {
+                let mut input_a = current_value._previous[0].borrow_mut();
+                input_a.gradient += if current_value.data > 0.0 { 1.0 * current_value.gradient } else { 0.0 * current_value.gradient };
+            })
+        )
+    )
+}
+
+// The `power` function computes the element-wise exponentiation of `input_a` raised to the power of `input_b`.
+//
+// The derivative of the output (`current_value`) with respect to its input (`input_a`) is:
+//
+// ∂current_value/∂input_a (the local gradient) = input_b * input_a^(input_b - 1)
+// 
+// The gradient accumulation update rule for the input value (`input_a.gradient`) is:
+//
+// (∂L/input_a) += (∂current_value/∂input_a) * (∂L/∂current_value)
+//
+// Where L is the final output value (e.g. the loss function).
+fn power(input_a: &Value, input_b: &Value) -> Value {
+    let a = input_a.data();
+    let b = input_b.data();
     let c = a.powf(b);
 
     Value::new(
         InternalValueData::new(
             c,
             Operation::Power,
-            vec![s.clone(), other.clone()],
-            Some(|v| {
-                let mut s = v._previous[0].borrow_mut();
-                let other = v._previous[1].borrow();
+            vec![input_a.clone(), input_b.clone()],
+            Some(|current_value| {
+                let mut input_a = current_value._previous[0].borrow_mut();
+                let input_b = current_value._previous[1].borrow();
     
-                s.gradient += other.data * s.data.powf(other.data - 1.0) * v.gradient;
+                input_a.gradient += input_b.data * input_a.data.powf(input_b.data - 1.0) * current_value.gradient;
             })
         )
     )
@@ -347,11 +410,11 @@ impl Add<&Value> for f64 {
 impl Add<f64> for Value {
     type Output = Value;
 
-    fn add(self, b: f64) -> Self::Output {
+    fn add(self, otherf: f64) -> Self::Output {
         add(
             &self,
             &Value::from(
-                b,
+                otherf,
             ),
             Operation::Add
         )
@@ -361,33 +424,46 @@ impl Add<f64> for Value {
 impl Add<f64> for &Value {
     type Output = Value;
 
-    fn add(self, b: f64) -> Self::Output {
+    fn add(self, otherf: f64) -> Self::Output {
         add(
             self,
             &Value::from(
-                b,
+                otherf,
             ),
             Operation::Add
         )
     }
 }
 
-fn add(s: &Value, other: &Value, operation: Operation) -> Value {
-    let a = s.data();
-    let b = other.data();
+// The `add` function computes the element-wise addition of `input_a` and `input_b`.
+//
+// The derivatives of the output (`current_value`) with respect to its inputs (`input_a` and `input_b`) are:
+//
+// ∂current_value/∂input_a (the local gradient) = 1
+// ∂current_value/∂input_b (the local gradient) = 1
+//
+// The gradient accumulation rules for the input values (`input_a.gradient` and `input_b.gradient`) are:
+//
+// (∂L/input_a) += (∂current_value/∂input_a) * (∂L/∂current_value)
+// (∂L/input_b) += (∂current_value/∂input_b) * (∂L/∂current_value)
+//
+// Where L is the final output value (e.g. the loss function).
+fn add(input_a: &Value, input_b: &Value, operation: Operation) -> Value {
+    let a = input_a.data();
+    let b = input_b.data();
     let c = a + b;
 
     Value::new(
         InternalValueData::new(
             c,
             operation,
-            vec![s.clone(), other.clone()],
-            Some(|v| {
-                let mut s = v._previous[0].borrow_mut();
-                let mut other = v._previous[1].borrow_mut();
+            vec![input_a.clone(), input_b.clone()],
+            Some(|current_value| {
+                let mut input_a = current_value._previous[0].borrow_mut();
+                let mut input_b = current_value._previous[1].borrow_mut();
     
-                s.gradient += 1.0 * v.gradient;
-                other.gradient += 1.0 * v.gradient;
+                input_a.gradient += 1.0 * current_value.gradient;
+                input_b.gradient += 1.0 * current_value.gradient;
             })
         )
     )
@@ -450,11 +526,11 @@ impl Sub<&Value> for f64 {
 impl Sub<f64> for Value {
     type Output = Value;
 
-    fn sub(self, b: f64) -> Self::Output {
+    fn sub(self, otherf: f64) -> Self::Output {
         subtract(
             &self,
             &Value::from(
-                b,
+                otherf,
             )
         )
     }
@@ -463,18 +539,21 @@ impl Sub<f64> for Value {
 impl Sub<f64> for &Value {
     type Output = Value;
 
-    fn sub(self, b: f64) -> Self::Output {
+    fn sub(self, otherf: f64) -> Self::Output {
         subtract(
             self,
             &Value::from(
-                b,
+                otherf,
             )
         )
     }
 }
 
-fn subtract(s: &Value, other: &Value) -> Value {
-    add(s, &negate(other), Operation::Subtract)
+// The `subtract` function computes the element-wise subtraction of `input_a` and `input_b`
+// but does not implement its own gradient accumulation update rules as it relies on granular
+// `add` and `negate` operations (the latter itself relying on `multiply`).
+fn subtract(input_a: &Value, input_b: &Value) -> Value {
+    add(input_a, &negate(input_b), Operation::Subtract)
 }
 
 impl Mul<Value> for Value {
@@ -528,11 +607,11 @@ impl Mul<&Value> for f64 {
 impl Mul<f64> for Value {
     type Output = Value;
 
-    fn mul(self, b: f64) -> Self::Output {
+    fn mul(self, otherf: f64) -> Self::Output {
         multiply(
             &self,
             &Value::from(
-                b,
+                otherf,
             ),
             Operation::Multiply
         )
@@ -542,33 +621,46 @@ impl Mul<f64> for Value {
 impl Mul<f64> for &Value {
     type Output = Value;
 
-    fn mul(self, b: f64) -> Self::Output {
+    fn mul(self, otherf: f64) -> Self::Output {
         multiply(
             self,
             &Value::from(
-                b,
+                otherf,
             ),
             Operation::Multiply
         )
     }
 }
 
-fn multiply(s: &Value, other: &Value, operation: Operation) -> Value {
-    let a = s.data();
-    let b = other.data();
+// The `multiply` function computes the element-wise multiplication of `input_a` and `input_b`.
+//
+// The derivatives of the output (`current_value`) with respect to its inputs (`input_a` and `input_b`) are:
+//
+// ∂current_value/∂input_a (the local gradient) = input_b
+// ∂current_value/∂input_b (the local gradient) = input_a
+//
+// The gradient accumulation rules for the input values (`input_a.gradient` and `input_b.gradient`) are:
+//
+// (∂L/input_a) += (∂current_value/∂input_a) * (∂L/∂current_value)
+// (∂L/input_b) += (∂current_value/∂input_b) * (∂L/∂current_value)
+//
+// Where L is the final output value (e.g. the loss function).
+fn multiply(input_a: &Value, input_b: &Value, operation: Operation) -> Value {
+    let a = input_a.data();
+    let b = input_b.data();
     let c = a * b;
 
     Value::new(
         InternalValueData::new(
             c,
             operation,
-            vec![s.clone(), other.clone()],
-            Some(|v| {
-                let mut s = v._previous[0].borrow_mut();
-                let mut other = v._previous[1].borrow_mut();
+            vec![input_a.clone(), input_b.clone()],
+            Some(|current_value| {
+                let mut input_a = current_value._previous[0].borrow_mut();
+                let mut input_b = current_value._previous[1].borrow_mut();
     
-                s.gradient += other.data * v.gradient;
-                other.gradient += s.data * v.gradient;
+                input_a.gradient += input_b.data * current_value.gradient;
+                input_b.gradient += input_a.data * current_value.gradient;
             })
         )
     )
@@ -648,8 +740,11 @@ impl Div<f64> for &Value {
     }
 }
 
-fn divide(s: &Value, other: &Value) -> Value {
-    multiply(s, &other.powf(-1.0), Operation::Divide)
+// The `divide` function computes the element-wise division of `input_a` and `input_b`
+// but does not implement its own gradient accumulation update rules as it is implemented
+// using the `multiply` and `powf` operations (the latter itself relying on `power`).
+fn divide(input_a: &Value, input_b: &Value) -> Value {
+    multiply(input_a, &input_b.powf(-1.0), Operation::Divide)
 }
 
 impl Neg for Value {
@@ -668,9 +763,11 @@ impl<'a> Neg for &'a Value {
     }
 }
 
-fn negate(s: &Value) -> Value {
+// The `negate` function computes the element-wise negation of `input` but does not implement
+// its own gradient accumulation update rule as it is implemented using the `multiply` operation.
+fn negate(input: &Value) -> Value {
     multiply(
-        s,
+        input,
         &Value::from(
             -1.0,
         ),
@@ -683,8 +780,9 @@ impl fmt::Debug for Value {
         f.debug_struct("Value")
             .field("data", &self.data())
             .field("gradient", &self.gradient())
-            .field("operation", &self.operation())
-            .field("_previous", &self.previous().iter().map(|x| x.data()).collect::<Vec<f64>>())
+            .field("_name", &self.name())
+            .field("_operation", &self.operation())
+            .field("_previous", &self.previous().iter().map(|x| format!("data={}, gradient={}", x.data(), x.gradient())).collect::<Vec<String>>())
             .finish()
     }
 }
@@ -991,7 +1089,7 @@ mod tests {
 
         assert_eq!(g.data(), 24.70408163265306); // i.e. 24.7041: the outcome of this forward pass
         g.backward();
-        assert_eq!(a.gradient(), 138.83381924198252); // i.e. 138.8338: the numerical value of dg/da
-        assert_eq!(b.gradient(), 645.5772594752186); // i.e. 645.5773: the numerical value of dg/db       
+        assert_eq!(a.gradient(), 138.83381924198252); // i.e. 138.8338: the numerical value of ∂g/∂a
+        assert_eq!(b.gradient(), 645.5772594752186); // i.e. 645.5773: the numerical value of ∂g/∂b       
     }
 }
