@@ -133,6 +133,96 @@ fn main() {
     // two hidden layers with five neurons each, and one output neuron in the output layer.
     let mut model = MLP::new(1, vec![5, 5, 1]);
 
+    // A neural network is proven to be a universal function approximator, which is is a system 
+    // capable of mimicking any continuous function's behavior within a specified domain, given
+    // appropriate configuration and capacity.
+    //
+    // As a programmer, we are used to constructing functions by arranging syntaxes to express our
+    // logical intent -- e.g. `if n <= 1 { n } else { fn(n-1) + fn(n-2) }`. This naturally leads
+    // to functions that are easy for humans to understand and interpret, because (1) they are written
+    // in a way that is similar to how we would explain the function to another human, (2) related logic
+    // is generally factored so as to be colocated and DRY, and finally (3) we have a full range of
+    // high-level programming syntaxes and library calls available to us instead of only a limited set
+    // of mathematical operations.
+    //
+    // Unfortunately the functions represented by neural networks are not naturally human interpretable
+    // because of how neural networks are constructed. A neural network is basically a gigantic mathematical
+    // expression made up of layers of weighted sums of inputs that are each passed through non-linear
+    // activation functions (e.g. `activation(sum(weights * inputs) + bias)`) before being passed
+    // through to the same expressions in the next layer.
+    //
+    // The reasons why neural networks are constructed as giant mathematical expressions, isn't merely to
+    // make them computationally efficient to train, but is mainly because training them requires a process 
+    // called "backpropagation" (a form of auto-differentiation). 
+    //
+    // In order for backpropagation to be possible, it requires the following:
+    //
+    // 1. All operations/functions used to produce the output of a neural network *must be* differentiable. The
+    //    reason for this is that backpropagation uses the chain rule of differentiation to compute each input 
+    //    `gradient` (the derivative of a loss function with respect to an input weight or bias) by multiplying
+    //    the local derivative of the "current weight or bias with respect to its input weight or bias" by the partial 
+    //    derivative of "the loss function with respect to the current weight or bias" before accumulating this.
+    //
+    //      e.g.
+    //      
+    //        ∂L/∂input_weight_or_bias += ∂current_weight_or_bias/∂input_weight_or_bias * ∂L/∂current_weight_or_bias
+    //
+    //      Note 1: The `∂` symbol is the partial derivative operator.
+    //      Note 2: In the example above `∂L/∂current_weight_or_bias` would have been computed by a prior iteration in the
+    //              backpropagation algorithm and therefore can be substituted with the `gradient` of the current weight or bias.
+    //      Note 3: On the other hand, `∂current_weight_or_bias/∂input_weight_or_bias` is the local derivative and must be 
+    //              computed based on the type of operation/function and its input values. Within our neural network, this
+    //              is done within the `_backward` method of each `Value` struct.
+    //      Note 4: Mathematical operators like `*` and `+` are trivially differentiable, while others like `ReLU` have
+    //              sub-differentiable functions that can be used to approximate the derivative of the function.
+    //      Note 5: We accumulate the result of multiplying these two partial derivatives into `∂L/∂input_weight_or_bias` 
+    //              which means that multiple output values of the network could contribute to the gradient of a single input 
+    //              weight or bias. Only once every function/operation that an input weight or bias is involved in has been 
+    //              processed will the `∂L/∂input_weight_or_bias` have been computed and be ready for use as a 
+    //              `∂L/∂current_weight_or_bias` in a future iteration of the backpropagation algorithm. Within our neural 
+    //              network, a topological sort is used to ensure that this is the case.
+    // 
+    // 2. Any logic learnt is generically represented by numeric weights and biases (the parameters of the network)
+    //    as these values also *must be* differentiable. Basically, if you want a universal function approximator
+    //    that can learn any function, you must start with a generic function and then learn the parameters that
+    //    make it behave like the function you want to approximate.
+    //
+    // 3. Mathematical expressions and parameter initializations are carefully designed to avoid issues such as
+    //    "symmetry" (neurons that produce the same outputs), "dead neurons" (neurons that always output zero),
+    //    "exploding gradients" (gradients that grow exponentially in magnitude), and "vanishing gradients" 
+    //    (gradients that shrink exponentially in magnitude), as well as other numerical stability issues.
+    //
+    // The key idea is that as long as there is a way to compute or approximate the local derivative of every function/operation,
+    // we can use this to help to compute the derivative of the loss function with respect to an input weight or bias and to
+    // store a `gradient` for each weight and bias in the network.
+    // 
+    // That brings us to the second key idea of neural networks. It's not enough to merely have a function that can be used to 
+    // "predict" values by multipling weights and biases by inputs while passing their results through activation functions. 
+    // Even if we had a way to compute gradients of these outputs with respect to their weights and biases, it would still tell
+    // us nothing about how to improve the performance of the network. What we need is a way to measure how well the network is
+    // performing and a method of using this information to update weights and biases. 
+    //
+    // That is where the "loss" function comes in. The loss function is a function that compares the predicted value produced by
+    // the model with the actual value that we want the model to produce and that then produces a single scalar value that 
+    // represents how well the model is performing -- the lower the loss, the better the model is performing; the higher the loss,
+    // the worse. Once the gigantic mathematical expression that is your neural network is producing this value, backpropagation 
+    // can be used to compute the derivative of the loss function with respect to each weight or bias in the network 
+    // (the `gradient`). It's important to note that the `gradient` of a weight or bias is not the same as the weight or bias 
+    // itself. The `gradient` is the name given to the derivative ("rate of change") of the loss function with respect to the weight
+    // or bias and represents the impact of a small change in the weight or bias on the loss function. This `gradient` can then
+    // be used in a process called "stochastic gradient descent" (SGD) to update the weight or bias in a way that reduces the total
+    // loss of the network -- e.g. if the `gradient` of a weight is positive, then the weight should be decreased, while if the 
+    // `gradient` of a weight is negative, then the weight should be increased; similarly if the `gradient` is large, then the 
+    // weight should be updated by a large amount, while if the `gradient` is small, then the weight should be updated by a small
+    // amount.
+    //
+    // The process described above is repeated for each "epoch" (iteration) of the training loop, and the magnitude of these updates
+    // to the weights and biases are also controlled by a "learning rate". Both the learning rate and the number of epochs are
+    // hyperparameters that can be tuned to improve the performance of the network, alongside other aspects of the network such as
+    // the number of layers, the number of neurons in each layer, the activation function used in each layer, amongst other things.
+    // 
+    // ...
+    //
     // Training loop.
     for epoch in 0..epochs {
         // Forward pass: compute the loss for the current model's parameters (weights and biases).
