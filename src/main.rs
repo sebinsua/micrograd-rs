@@ -45,6 +45,9 @@ fn generate_y_value(x: &Value, rng: &mut rand::rngs::ThreadRng, with_noise: bool
 // - Positivity: Ensures all error values are positive.
 // - Penalizes large errors: Emphasizes reducing larger errors.
 // - Differentiable: Suitable for optimization algorithms.
+// - Convexity: Guarantees a single global minimum with no local minima, simplifying optimization and ensuring convergence
+//              to the global minimum for certain models (e.g., single-layer models). Note that the convexity of the 
+//              optimization problem depends on the model's architecture itself.
 fn mse(predictions: &Vec<Vec<Value>>, actuals: &Vec<Value>) -> Value {
     predictions
         .iter()
@@ -124,8 +127,8 @@ fn main() {
     //
     // There are also more advanced techniques that we can use to optimize the training process
     // such as mini-batch gradient descent, adaptive learning rate algorithms (e.g. Adam, RMSprop),
-    // regularization (e.g. L1 or L2 also known as "weight decay"), early stopping and learning
-    // rate scheduling, among others.
+    // regularization (e.g. L1 or L2 also known as "weight decay"), momentum, early stopping and
+    // learning rate scheduling, among others.
     let epochs = 1000;
     let learning_rate = 0.01;
 
@@ -149,15 +152,16 @@ fn main() {
     // because of how neural networks are constructed. A neural network is basically a gigantic mathematical
     // expression made up of layers of weighted sums of inputs that are each passed through non-linear
     // activation functions (e.g. `activation(sum(weights * inputs) + bias)`) before being passed
-    // through to the same expressions in the next layer.
+    // through to the same expressions in another layer.
     //
-    // The reasons why neural networks are constructed as giant mathematical expressions, isn't merely to
-    // make them computationally efficient to train, but is mainly because training them requires a process 
-    // called "backpropagation" (a form of auto-differentiation). 
+    // The reasons why modern neural networks are constructed as giant mathematical expressions, isn't merely
+    // because this makes it computationally efficient to train large expressive models, but is substantially 
+    // due to training them requiring a process called "backpropagation" (also known as reverse-mode automatic
+    // differentiation). 
     //
     // In order for backpropagation to be possible, it requires the following:
     //
-    // 1. All operations/functions used to produce the output of a neural network *must be* differentiable. The
+    // 1. All operations/functions used by a neural network to produce its output *must be* differentiable. The
     //    reason for this is that backpropagation uses the chain rule of differentiation to compute each input 
     //    `gradient` (the derivative of a loss function with respect to an input weight or bias) by multiplying
     //    the local derivative of the "current weight or bias with respect to its input weight or bias" by the partial 
@@ -169,12 +173,17 @@ fn main() {
     //
     //      Note 1: The `∂` symbol is the partial derivative operator.
     //      Note 2: In the example above `∂L/∂current_weight_or_bias` would have been computed by a prior iteration in the
-    //              backpropagation algorithm and therefore can be substituted with the `gradient` of the current weight or bias.
+    //              backpropagation algorithm and therefore can be substituted with the `gradient` of the current weight or
+    //              bias.
     //      Note 3: On the other hand, `∂current_weight_or_bias/∂input_weight_or_bias` is the local derivative and must be 
     //              computed based on the type of operation/function and its input values. Within our neural network, this
     //              is done within the `_backward` method of each `Value` struct.
-    //      Note 4: Mathematical operators like `*` and `+` are trivially differentiable, while others like `ReLU` have
-    //              sub-differentiable functions that can be used to approximate the derivative of the function.
+    //      Note 4: Mathematical operators like `*` and `+` are trivially differentiable. A function is differentiable if it
+    //              is continuous and has a derivative at every point in its domain. Discontinuities in a function can make 
+    //              it non-differentiable at those specific points. For example, `ReLU(x) = max(0, x)` is discontinuous at
+    //              `x = 0` and therefore is not differentiable at that point, however, it is still differentiable otherwise 
+    //              (e.g. `ReLU'(x) = 0, x < 0` or `ReLU'(x) = 1, x > 0`). In practice, `x = 0` is very rare and we can 
+    //              safely set the subderivative to 0 at that point.
     //      Note 5: We accumulate the result of multiplying these two partial derivatives into `∂L/∂input_weight_or_bias` 
     //              which means that multiple output values of the network could contribute to the gradient of a single input 
     //              weight or bias. Only once every function/operation that an input weight or bias is involved in has been 
@@ -182,10 +191,10 @@ fn main() {
     //              `∂L/∂current_weight_or_bias` in a future iteration of the backpropagation algorithm. Within our neural 
     //              network, a topological sort is used to ensure that this is the case.
     // 
-    // 2. Any logic learnt is generically represented by numeric weights and biases (the parameters of the network)
-    //    as these values also *must be* differentiable. Basically, if you want a universal function approximator
-    //    that can learn any function, you must start with a generic function and then learn the parameters that
-    //    make it behave like the function you want to approximate.
+    // 2. Any logic or understanding learnt will be generically represented by the network's weights and biases (its parameters)
+    //    and therefore because these participate in the calculations of derivatives they *must be* real-valued numeric values.
+    //    Basically, if you want a universal function approximator that can learn any function, you must first start with a
+    //    generic function and then learn the parameters that make it behave like the function you'd like to approximate.
     //
     // 3. Mathematical expressions and parameter initializations are carefully designed to avoid issues such as
     //    "symmetry" (neurons that produce the same outputs), "dead neurons" (neurons that always output zero),
@@ -193,8 +202,9 @@ fn main() {
     //    (gradients that shrink exponentially in magnitude), as well as other numerical stability issues.
     //
     // The key idea is that as long as there is a way to compute or approximate the local derivative of every function/operation,
-    // we can use this to help to compute the derivative of the loss function with respect to an input weight or bias and to
-    // store a `gradient` for each weight and bias in the network.
+    // we can use this to help compute the derivative of the loss function with respect to an input weight or bias and then to
+    // store a `gradient` for each weight and bias in the network. This would be incredibly useful to us as it would allow us
+    // to determine the impact of each weight and bias on the overall model outputs.
     // 
     // That brings us to the second key idea of neural networks. It's not enough to merely have a function that can be used to 
     // "predict" values by multipling weights and biases by inputs while passing their results through activation functions. 
@@ -202,19 +212,20 @@ fn main() {
     // us nothing about how to improve the performance of the network. What we need is a way to measure how well the network is
     // performing and a method of using this information to update weights and biases. 
     //
-    // That is where the "loss" function comes in. The loss function is a function that compares the predicted value produced by
-    // the model with the actual value that we want the model to produce and that then produces a single scalar value that 
-    // represents how well the model is performing -- the lower the loss, the better the model is performing; the higher the loss,
-    // the worse. Once the gigantic mathematical expression that is your neural network is producing this value, backpropagation 
-    // can be used to compute the derivative of the loss function with respect to each weight or bias in the network 
-    // (the `gradient`). It's important to note that the `gradient` of a weight or bias is not the same as the weight or bias 
-    // itself. The `gradient` is the name given to the derivative ("rate of change") of the loss function with respect to the weight
-    // or bias and represents the impact of a small change in the weight or bias on the loss function. This `gradient` can then
-    // be used in a process called "stochastic gradient descent" (SGD) to update the weight or bias in a way that reduces the total
-    // loss of the network -- e.g. if the `gradient` of a weight is positive, then the weight should be decreased, while if the 
-    // `gradient` of a weight is negative, then the weight should be increased; similarly if the `gradient` is large, then the 
-    // weight should be updated by a large amount, while if the `gradient` is small, then the weight should be updated by a small
-    // amount.
+    // That is where the "loss" function comes in. The loss function (sometimes known as a cost function or error function) is a
+    // function that compares the predicted value produced by the model with the actual value that we want the model to produce.
+    // It provides both a performance metric and an optimization objective, with the goal of minimizing the loss function during
+    // training to improve the network's performance -- the lower the loss, the less information the model loses and the better 
+    // it performs; the higher the loss, the worse the model performs. Once the gigantic mathematical expression that is your 
+    // neural network is producing this value, backpropagation can be used to compute the derivative of the loss function with 
+    // respect to each weight or bias in the network (the `gradient`). It's important to note that the `gradient` of a weight or
+    // bias is not the same as the weight or bias itself. The `gradient` is the name given to the derivative ("rate of change") 
+    // of the loss function with respect to the weight or bias and represents the impact of a small change in the weight or bias 
+    // on the loss function. This `gradient` can then be used in a process called "gradient descent" to update the weight or bias
+    // in a way that reduces the total loss of the network -- e.g. if the `gradient` of a weight is positive, then the weight 
+    // should be decreased, while if the `gradient` of a weight is negative, then the weight should be increased; similarly if the
+    // `gradient` is large, then the weight should be updated by a large amount, while if the `gradient` is small, then the weight
+    // should be updated by a small amount.
     //
     // The process described above is repeated for each "epoch" (iteration) of the training loop, and the magnitude of these updates
     // to the weights and biases are also controlled by a "learning rate". Both the learning rate and the number of epochs are
@@ -236,9 +247,15 @@ fn main() {
         total_loss.backward();
 
         // Update model parameters using stochastic gradient descent (SGD).
+        // 
+        // Gradient descent is an optimization algorithm that is used to find the minimum of a function. It does this by taking steps
+        // in the opposite direction of the gradient (derivative) of the function at any given point. For non-convex functions, it is
+        // important to note that we cannot guarantee that we will find the global minimum of a function or that we will find a minimum
+        // at all. It is possible that we might get stuck in a saddle point, plateau, or local minima, or that we might oscillate around
+        // the minimum or even diverge away from the it entirely instead of converging towards it.
         for p in model.parameters() {
-            // We are attempting to minimize the loss, so we subtract the gradient from the parameter value.
-            // However, a negative gradient would result in an increase to the parameter value.
+            // We are attempting to minimize the loss, so we subtract the gradient from the parameter.
+            // However, a negative gradient would result in an increase to a parameter.
             p.decrement_data(learning_rate * p.gradient());
         }
 
