@@ -69,7 +69,7 @@ impl PartialEq for InternalValueData {
             && self.data == other.data
             && self.gradient == other.gradient
             // Comparing `_previous` is too expensive and so we added
-            // `_id` to faciliate cheaper comparisons.
+            // `_id` to facilitate cheaper comparisons.
             // && self._previous == other._previous
     }
 }
@@ -84,7 +84,7 @@ impl Hash for InternalValueData {
         self.data.to_bits().hash(state);
         self.gradient.to_bits().hash(state);
         // Hashing `_previous` is too expensive and so we added
-        // `_id` to faciliate cheaper hashes.
+        // `_id` to facilitate cheaper hashes.
         // self._previous.hash(state);
     }
 }
@@ -308,7 +308,7 @@ fn relu(input: &Value) -> Value {
     )
 }
 
-// The `power` function computes the element-wise exponentiation of `input_a` raised to the power of `input_b`.
+// The `power` function computes the exponentiation of `input_a` raised to the power of `input_b`.
 //
 // The derivative of the output (`current_value`) with respect to its input (`input_a`) is:
 //
@@ -435,7 +435,7 @@ impl Add<f64> for &Value {
     }
 }
 
-// The `add` function computes the element-wise addition of `input_a` and `input_b`.
+// The `add` function computes the addition of `input_a` and `input_b`.
 //
 // The derivatives of the output (`current_value`) with respect to its inputs (`input_a` and `input_b`) are:
 //
@@ -549,7 +549,7 @@ impl Sub<f64> for &Value {
     }
 }
 
-// The `subtract` function computes the element-wise subtraction of `input_a` and `input_b`
+// The `subtract` function computes the subtraction of `input_a` and `input_b`
 // but does not implement its own gradient accumulation update rules as it relies on granular
 // `add` and `negate` operations (the latter itself relying on `multiply`).
 fn subtract(input_a: &Value, input_b: &Value) -> Value {
@@ -632,7 +632,7 @@ impl Mul<f64> for &Value {
     }
 }
 
-// The `multiply` function computes the element-wise multiplication of `input_a` and `input_b`.
+// The `multiply` function computes the multiplication of `input_a` and `input_b`.
 //
 // The derivatives of the output (`current_value`) with respect to its inputs (`input_a` and `input_b`) are:
 //
@@ -740,7 +740,7 @@ impl Div<f64> for &Value {
     }
 }
 
-// The `divide` function computes the element-wise division of `input_a` and `input_b`
+// The `divide` function computes the division of `input_a` and `input_b`
 // but does not implement its own gradient accumulation update rules as it is implemented
 // using the `multiply` and `powf` operations (the latter itself relying on `power`).
 fn divide(input_a: &Value, input_b: &Value) -> Value {
@@ -763,7 +763,7 @@ impl<'a> Neg for &'a Value {
     }
 }
 
-// The `negate` function computes the element-wise negation of `input` but does not implement
+// The `negate` function computes the negation of `input` but does not implement
 // its own gradient accumulation update rule as it is implemented using the `multiply` operation.
 fn negate(input: &Value) -> Value {
     multiply(

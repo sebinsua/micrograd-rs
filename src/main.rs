@@ -94,7 +94,7 @@ fn main() {
         // The "forward pass" computes predicted `y` values for the given `x` values.
         //
         // While doing so, it extends the computation graph of the `model` with new `Value` nodes.
-        // Note that, the connection between the result of the `loss` function andn the `model` is one-way;
+        // Note that, the connection between the result of the `loss` function and the `model` is one-way;
         // the `model` is not connected to the `loss` function and `loss` does not participate in the computation
         // when `forward` is called on the `model`.
         let y_predictions = x_data
@@ -207,7 +207,7 @@ fn main() {
     // to determine the impact of each weight and bias on the overall model outputs.
     // 
     // That brings us to the second key idea of neural networks. It's not enough to merely have a function that can be used to 
-    // "predict" values by multipling weights and biases by inputs while passing their results through activation functions. 
+    // "predict" values by multiplying weights and biases by inputs while passing their results through activation functions. 
     // Even if we had a way to compute gradients of these outputs with respect to their weights and biases, it would still tell
     // us nothing about how to improve the performance of the network. What we need is a way to measure how well the network is
     // performing and a method of using this information to update weights and biases. 
